@@ -69,7 +69,7 @@ class MergedCalendarEvent:
         return CalendarEvent(
             start=self.start,
             end=self.end,
-            summary=self.summary,
+            summary=f"{self.summary} ⚠️" if self.exam else self.summary,
             description=self.description,
             location=self.location,
         )

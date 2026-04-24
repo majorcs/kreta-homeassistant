@@ -148,6 +148,60 @@ async def test_async_unload_entry_removes_runtime_data(hass) -> None:
     assert entry.entry_id not in hass.data[DOMAIN]
 
 
+async def test_calendar_event_with_exam_appends_warning_to_summary() -> None:
+    """Calendar events with exam info should have ⚠️ appended to the summary."""
+    now = datetime.now(TZ)
+    exam = AnnouncedTest(
+        test_date=now.date(),
+        announced_date=date(2026, 4, 25),
+        subject_name="Matematika",
+        teacher_name="Teszt Elek",
+        lesson_index=1,
+        theme="Egyenletek",
+        mode="irasbeli",
+    )
+    event = MergedCalendarEvent(
+        uid="math-exam",
+        start=now,
+        end=now + timedelta(minutes=45),
+        summary="Matematika",
+        description="Tantargy: Matematika\n\nBejelentett szamonkeres\nTema: Egyenletek\nMod: irasbeli",
+        location="A1",
+        lesson_index=1,
+        subject_name="Matematika",
+        exam=exam,
+        source="lesson_with_exam",
+    )
+
+    cal_event = event.as_calendar_event()
+
+    assert cal_event.summary == "Matematika ⚠️"
+    assert cal_event.description is not None
+    assert "Bejelentett szamonkeres" in cal_event.description
+    assert "Egyenletek" in cal_event.description
+
+
+async def test_calendar_event_without_exam_leaves_summary_unchanged() -> None:
+    """Plain lesson calendar events should have no ⚠️ in the summary."""
+    now = datetime.now(TZ)
+    event = _event(now, "Matematika", source="lesson")
+
+    cal_event = event.as_calendar_event()
+
+    assert cal_event.summary == "Matematika"
+    assert "⚠️" not in (cal_event.summary or "")
+
+
+async def test_calendar_exam_only_event_appends_warning_to_summary() -> None:
+    """Standalone exam-only events should also have ⚠️ appended to the summary."""
+    now = datetime.now(TZ)
+    event = _event(now, "Biologia", source="exam_only")
+
+    cal_event = event.as_calendar_event()
+
+    assert cal_event.summary == "Biologia ⚠️"
+
+
 async def test_calendar_entity_exposes_events_and_attributes(hass) -> None:
     """Calendar entities should expose the next matching Kreta events."""
     now = datetime.now(TZ)
