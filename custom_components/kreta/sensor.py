@@ -9,7 +9,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import KretaRuntimeData
@@ -27,7 +27,7 @@ from .const import (
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    async_add_entities: AddConfigEntryEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Kreta sensor entities."""
     runtime_data: KretaRuntimeData = hass.data[DOMAIN][entry.entry_id]
