@@ -1,0 +1,1 @@
+"""Kreta API client package."""

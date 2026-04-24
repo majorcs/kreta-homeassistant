@@ -1,0 +1,23 @@
+# Local planning and AI artifacts
+kreta-homeassistant-prompt.md
+
+# Sensitive or throwaway reference artifacts
+reference/
+scripts/manual_test_march_23.py
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.venv-ha/
+venv/
+
+# Coverage output
+.coverage
+htmlcov/
+
+# Local Home Assistant dev instance
+.homeassistant-dev/

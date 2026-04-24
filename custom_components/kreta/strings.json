@@ -1,0 +1,37 @@
+{
+  "title": "Kreta",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Kreta",
+        "description": "Enter the credentials for one pupil account.",
+        "data": {
+          "klik_id": "KLIK ID",
+          "user_id": "User ID",
+          "password": "Password",
+          "refresh_hours": "Refresh interval (hours)",
+          "lookahead_weeks": "Calendar lookahead (weeks)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Kreta.",
+      "invalid_auth": "Authentication failed.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This pupil account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kreta options",
+        "data": {
+          "refresh_hours": "Refresh interval (hours)",
+          "lookahead_weeks": "Calendar lookahead (weeks)"
+        }
+      }
+    }
+  }
+}

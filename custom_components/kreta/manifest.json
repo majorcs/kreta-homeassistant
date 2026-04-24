@@ -1,0 +1,12 @@
+{
+  "domain": "kreta",
+  "name": "Kreta",
+  "codeowners": ["@major"],
+  "config_flow": true,
+  "documentation": "https://github.com/major/kreta-homeassistant/blob/main/README.md",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/major/kreta-homeassistant/issues",
+  "requirements": [],
+  "version": "2026.04.24.1"
+}

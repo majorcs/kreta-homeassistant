@@ -1,0 +1,37 @@
+{
+  "title": "Kreta",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Kreta beallitasa",
+        "description": "Add meg egy tanuloi fiok belepesi adatait.",
+        "data": {
+          "klik_id": "KLIK azonosito",
+          "user_id": "Felhasznaloi azonosito",
+          "password": "Jelszo",
+          "refresh_hours": "Frissitesi idokoz (ora)",
+          "lookahead_weeks": "Naptari eloretekintes (het)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nem sikerult kapcsolodni a Kretahoz.",
+      "invalid_auth": "Sikertelen hitelesites.",
+      "unknown": "Varatlan hiba tortent."
+    },
+    "abort": {
+      "already_configured": "Ez a tanuloi fiok mar be van allitva."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kreta beallitasok",
+        "data": {
+          "refresh_hours": "Frissitesi idokoz (ora)",
+          "lookahead_weeks": "Naptari eloretekintes (het)"
+        }
+      }
+    }
+  }
+}
