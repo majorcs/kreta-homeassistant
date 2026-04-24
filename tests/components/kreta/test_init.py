@@ -40,6 +40,9 @@ async def test_setup_entry(hass: HomeAssistant) -> None:
         )
 
     with patch(
+        "custom_components.kreta.async_get_clientsession",
+        return_value=object(),
+    ), patch(
         "custom_components.kreta.coordinator.KretaDataUpdateCoordinator.async_config_entry_first_refresh",
         new=_first_refresh,
     ), patch(
