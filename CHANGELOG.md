@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.24.3
+
+### Changed
+
+- Calendar event titles now include a ⚠️ warning sign when the event has an associated exam, making exam days immediately visible in Home Assistant's calendar view
+
 ## 2026.04.24.2
 
 Follow-up release after the first public publication.
