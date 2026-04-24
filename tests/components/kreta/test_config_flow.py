@@ -78,7 +78,10 @@ async def test_validate_input_returns_profile_title(hass: HomeAssistant) -> None
     """Input validation should derive a title from the returned student profile."""
     fake_profile = type("Profile", (), {"student_name": "Student One"})()
 
-    with patch("custom_components.kreta.config_flow.KretaApiClient") as client_cls:
+    with patch(
+        "custom_components.kreta.config_flow.async_get_clientsession",
+        return_value=object(),
+    ), patch("custom_components.kreta.config_flow.KretaApiClient") as client_cls:
         client = client_cls.return_value
         client.async_authenticate = AsyncMock()
         client.async_get_student_profile = AsyncMock(return_value=fake_profile)
