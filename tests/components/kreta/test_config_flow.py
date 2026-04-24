@@ -34,6 +34,9 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
     with patch(
         "custom_components.kreta.config_flow.async_validate_input",
         AsyncMock(return_value={"title": "Student One (school01)", "student_name": "Student One"}),
+    ), patch(
+        "custom_components.kreta.async_setup_entry",
+        AsyncMock(return_value=True),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
