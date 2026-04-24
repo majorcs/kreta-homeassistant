@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.24.2
+
+Follow-up release after the first public publication.
+
+### Added
+
+- binary sensors for school day and exam day status for today and tomorrow
+- local continuity notes in `docs/current-state.md`
+
+### Changed
+
+- GitHub workflow now uses a protected `main` branch with feature-branch PRs and required CI checks
+
 ## 2026.04.24.1
 
 Initial public release.

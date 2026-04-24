@@ -1,6 +1,6 @@
 [project]
 name = "kreta-homeassistant"
-version = "2026.04.24.1"
+version = "2026.04.24.2"
 description = "Unofficial Home Assistant custom integration for Kreta"
 requires-python = ">=3.12"
 
@@ -15,4 +15,3 @@ source = ["custom_components/kreta"]
 [tool.coverage.report]
 fail_under = 90
 show_missing = true
-
