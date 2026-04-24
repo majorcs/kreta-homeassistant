@@ -13,6 +13,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.kreta import KretaRuntimeData, async_setup, async_unload_entry
 from custom_components.kreta.api.models import AnnouncedTest, MergedCalendarEvent, StudentProfile
 from custom_components.kreta.api.storage import KretaTokenStore
+from custom_components.kreta.binary_sensor import KretaDayBinarySensor
+from custom_components.kreta.binary_sensor import async_setup_entry as async_setup_binary_sensor_entry
 from custom_components.kreta.calendar import async_setup_entry as async_setup_calendar_entry
 from custom_components.kreta.calendar import KretaCalendarEntity
 from custom_components.kreta.const import (
@@ -71,7 +73,7 @@ def _event(start: datetime, summary: str, source: str = "lesson") -> MergedCalen
             theme="Tema",
             mode="irasbeli",
         )
-        if source == "lesson_with_exam"
+        if source in {"lesson_with_exam", "exam_only"}
         else None,
         source=source,
     )
@@ -206,3 +208,57 @@ async def test_sensor_entity_handles_missing_data_and_setup(hass) -> None:
     entity = added[0]
     assert entity.native_value is None
     assert entity.extra_state_attributes == {}
+
+
+async def test_binary_sensor_entities_reflect_today_and_tomorrow(hass) -> None:
+    """Binary sensors should expose school-day and exam-day status."""
+    now = datetime(2026, 4, 24, 7, 30, tzinfo=TZ)
+    tomorrow = now + timedelta(days=1)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(
+        entry,
+        [
+            _event(now.replace(hour=8, minute=0), "Matematika"),
+            _event(now.replace(hour=10, minute=0), "Tortenelem", source="lesson_with_exam"),
+            _event(tomorrow.replace(hour=9, minute=0), "Biologia"),
+            _event(tomorrow.replace(hour=13, minute=0), "Kemia", source="exam_only"),
+        ],
+    )
+
+    with patch("custom_components.kreta.binary_sensor.dt_util.now", return_value=now):
+        school_today = KretaDayBinarySensor(entry, runtime, "school_day", "Is School Day")
+        school_tomorrow = KretaDayBinarySensor(
+            entry,
+            runtime,
+            "school_day_tomorrow",
+            "Is School Day Tomorrow",
+            day_offset=1,
+        )
+        exam_today = KretaDayBinarySensor(entry, runtime, "exam_day", "Is Exam Day", event_kind="exam")
+        exam_tomorrow = KretaDayBinarySensor(
+            entry,
+            runtime,
+            "exam_day_tomorrow",
+            "Is Exam Day Tomorrow",
+            day_offset=1,
+            event_kind="exam",
+        )
+
+        assert school_today.is_on is True
+        assert school_tomorrow.is_on is True
+        assert exam_today.is_on is True
+        assert exam_tomorrow.is_on is True
+        assert school_today.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_binary_sensor_entities_handle_missing_data_and_setup(hass) -> None:
+    """Binary sensor setup should add entities and empty coordinators should be safe."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    added: list = []
+
+    await async_setup_binary_sensor_entry(hass, entry, added.extend)
+
+    assert len(added) == 4
+    assert all(entity.is_on is None for entity in added)
