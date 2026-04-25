@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -168,7 +168,7 @@ async def test_coordinator_update_data_success(hass) -> None:
     [
         (InvalidAuthError, ConfigEntryAuthFailed),
         (CannotConnectError, UpdateFailed),
-        (KretaApiError, ConfigEntryNotReady),
+        (KretaApiError, UpdateFailed),
     ],
 )
 async def test_coordinator_update_data_error_mapping(hass, side_effect, expected_exception) -> None:
@@ -192,3 +192,47 @@ async def test_coordinator_update_data_error_mapping(hass, side_effect, expected
 
     with pytest.raises(expected_exception):
         await coordinator._async_update_data()
+
+
+async def test_kreta_api_error_on_periodic_refresh_keeps_data(hass) -> None:
+    """KretaApiError during a periodic refresh should preserve existing coordinator data.
+
+    This is a regression test: the original code raised ConfigEntryNotReady for
+    KretaApiError, which caused HA to unload the config entry during periodic refresh.
+    The correct exception is UpdateFailed, which keeps the last-known data and retries
+    at the next interval.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Student One (school01)",
+        data={
+            CONF_KLIK_ID: "school01",
+            CONF_USER_ID: "student01",
+            "password": "secret",
+            CONF_REFRESH_HOURS: 12,
+            CONF_LOOKAHEAD_WEEKS: 2,
+        },
+    )
+    lesson = _lesson(
+        "math-1",
+        "Matematika",
+        datetime(2026, 4, 27, 8, 0, tzinfo=TZ),
+        datetime(2026, 4, 27, 8, 45, tzinfo=TZ),
+        1,
+    )
+    profile = type("Profile", (), {"as_dict": lambda self: {"student_name": "Student One"}})()
+    client = type("Client", (), {})()
+    client.async_get_student_profile = AsyncMock(return_value=profile)
+    client.async_get_lessons = AsyncMock(return_value=[lesson])
+    client.async_get_announced_tests = AsyncMock(return_value=[])
+    coordinator = KretaDataUpdateCoordinator(hass, entry, client)
+
+    previous_data = await coordinator._async_update_data()
+    coordinator.data = previous_data
+
+    client.async_get_student_profile = AsyncMock(side_effect=KretaApiError("503"))
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator.data is previous_data
