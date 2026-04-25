@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.25.1
+
+### Fixed
+
+- Sensors and calendar no longer disappear after a failed periodic refresh (e.g., when the school's Kreta server is offline overnight). A transient API error (`KretaApiError`, such as 503 Service Unavailable) now raises `UpdateFailed` instead of `ConfigEntryNotReady`, so the coordinator keeps the last-known data and retries at the next scheduled interval
+
 ## 2026.04.24.3
 
 ### Changed
