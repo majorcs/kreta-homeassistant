@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.25.2
+
+### Changed
+
+- API error response bodies that contain HTML (e.g. maintenance pages) are now shown as `(HTML response)` in the HA UI instead of dumping the full HTML markup. Plain-text error bodies are truncated to 200 characters. The full response body is still available at DEBUG log level.
+- Added INFO-level log entries at key lifecycle points (entry setup, each refresh cycle start/end with event counts, authentication path) to make production monitoring easier without enabling debug logging.
+
 ## 2026.04.25.1
 
 ### Fixed
