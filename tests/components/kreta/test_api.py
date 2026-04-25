@@ -12,7 +12,7 @@ from custom_components.kreta.api.auth import (
     extract_authorization_code,
     extract_request_verification_token,
 )
-from custom_components.kreta.api.client import KretaApiClient
+from custom_components.kreta.api.client import KretaApiClient, _summarize_error_body
 from custom_components.kreta.api.exceptions import (
     ApiResponseError,
     CannotConnectError,
@@ -516,3 +516,66 @@ async def test_parse_datetime_returns_localized_datetime() -> None:
     parsed = client._parse_datetime("2026-04-27T08:00:00Z")
 
     assert parsed.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# _summarize_error_body
+# ---------------------------------------------------------------------------
+
+
+def test_summarize_error_body_collapses_html_doctype() -> None:
+    """HTML pages starting with <!DOCTYPE should be summarised."""
+    assert _summarize_error_body("<!DOCTYPE html><html><body>maintenance</body></html>") == "(HTML response)"
+
+
+def test_summarize_error_body_collapses_html_tag() -> None:
+    """HTML pages starting with <html should be summarised."""
+    assert _summarize_error_body("<html><body>error</body></html>") == "(HTML response)"
+
+
+def test_summarize_error_body_collapses_html_with_bom() -> None:
+    """BOM prefix before HTML should still be detected as HTML."""
+    body = "\ufeff<!DOCTYPE html><html></html>"
+    assert _summarize_error_body(body) == "(HTML response)"
+
+
+def test_summarize_error_body_keeps_short_plain_text() -> None:
+    """Short plain-text bodies should be kept verbatim."""
+    assert _summarize_error_body("service unavailable") == "service unavailable"
+
+
+def test_summarize_error_body_truncates_long_plain_text() -> None:
+    """Plain-text bodies longer than the limit should be truncated with ellipsis."""
+    long_body = "x" * 300
+    result = _summarize_error_body(long_body)
+    assert result.endswith("…")
+    assert len(result) < 300
+
+
+async def test_async_request_html_error_body_is_summarised() -> None:
+    """An HTML error response body must not appear verbatim in the exception message."""
+    client = _client()
+    client.async_authenticate = AsyncMock()
+    client._session.request = AsyncMock(
+        return_value=FakeResponse(
+            status=503,
+            text_data="<!DOCTYPE html><html><body>maintenance</body></html>",
+        )
+    )
+
+    with pytest.raises(KretaApiError, match=r"\(HTML response\)"):
+        await client._async_request("get", "https://example.test")
+
+
+async def test_exchange_refresh_token_html_error_body_is_summarised() -> None:
+    """HTML body in refresh-token 503 must not appear verbatim in the exception."""
+    client = _client()
+    client._session.post = AsyncMock(
+        return_value=FakeResponse(
+            status=503,
+            text_data="<!DOCTYPE html><html><body>maintenance</body></html>",
+        )
+    )
+
+    with pytest.raises(KretaApiError, match=r"\(HTML response\)"):
+        await client._async_exchange_refresh_token("some-refresh-token")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
@@ -14,6 +15,8 @@ from .const import DOMAIN, PLATFORMS
 from .coordinator import KretaDataUpdateCoordinator
 
 type KretaConfigEntry = ConfigEntry
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -32,6 +35,11 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: KretaConfigEntry) -> bool:
     """Set up Kreta from a config entry."""
+    _LOGGER.info(
+        "Setting up Kreta entry for %s / %s",
+        entry.data["klik_id"],
+        entry.data["user_id"],
+    )
     session = async_get_clientsession(hass)
     token_store = KretaTokenStore(hass, entry.entry_id)
     client = KretaApiClient(
@@ -51,6 +59,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: KretaConfigEntry) -> boo
         if entry.title != expected_title:
             hass.config_entries.async_update_entry(entry, title=expected_title)
 
+    _LOGGER.info(
+        "Kreta entry ready for %s (%s)",
+        coordinator.data.profile.student_name if coordinator.data else "unknown",
+        entry.data["klik_id"],
+    )
+
     hass.data[DOMAIN][entry.entry_id] = KretaRuntimeData(
         client=client,
         coordinator=coordinator,
@@ -63,6 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: KretaConfigEntry) -> boo
 
 async def async_unload_entry(hass: HomeAssistant, entry: KretaConfigEntry) -> bool:
     """Unload a config entry."""
+    _LOGGER.info("Unloading Kreta entry for %s", entry.data.get("klik_id", entry.entry_id))
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)

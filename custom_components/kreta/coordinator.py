@@ -205,6 +205,14 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             datetime.combine(week_end, time.max, tzinfo=dt_util.DEFAULT_TIME_ZONE)
         )
 
+        _LOGGER.info(
+            "Fetching Kreta data for %s (%s → %s, %d-week lookahead)",
+            self.config_entry.data[CONF_USER_ID],
+            week_start,
+            week_end,
+            lookahead_weeks,
+        )
+
         try:
             profile = await self.client.async_get_student_profile()
             lessons = await self.client.async_get_lessons(week_start, week_end)
@@ -217,6 +225,13 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             raise UpdateFailed(str(err)) from err
 
         merged_events = merge_lessons_and_tests(lessons, tests)
+
+        _LOGGER.info(
+            "Kreta data refreshed: %d lessons, %d announced tests → %d calendar events",
+            len(lessons),
+            len(tests),
+            len(merged_events),
+        )
         payload = {
             "student": profile.as_dict(),
             "events": [event.as_dict() for event in merged_events],

@@ -19,6 +19,22 @@ from .storage import TokenStore
 
 _LOGGER = logging.getLogger(__name__)
 KRETA_TIMEZONE = ZoneInfo("Europe/Budapest")
+_ERROR_BODY_MAX_LENGTH = 200
+
+
+def _summarize_error_body(body: str) -> str:
+    """Return a concise summary of an HTTP error response body.
+
+    HTML pages (e.g. maintenance splash screens) are collapsed to a short
+    label so they don't flood the HA UI with raw markup.  Plain-text bodies
+    are kept verbatim up to _ERROR_BODY_MAX_LENGTH characters.
+    """
+    stripped = body.lstrip("\ufeff").lstrip()
+    if stripped.lower().startswith(("<!doctype", "<html")):
+        return "(HTML response)"
+    if len(body) <= _ERROR_BODY_MAX_LENGTH:
+        return body
+    return body[:_ERROR_BODY_MAX_LENGTH] + "…"
 
 AUTHORIZE_PATH = (
     "/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback%3Fprompt%3Dlogin"
@@ -94,13 +110,17 @@ class KretaApiClient:
 
             refresh_token = await self._token_store.async_get_refresh_token()
             if refresh_token and not force_login:
+                _LOGGER.info("Authenticating with Kreta using stored refresh token")
                 try:
                     await self._async_exchange_refresh_token(refresh_token)
+                    _LOGGER.info("Kreta authentication successful (refresh token)")
                     return
                 except InvalidAuthError:
                     _LOGGER.debug("Stored refresh token rejected, falling back to login")
 
+            _LOGGER.info("Performing full Kreta login for %s", self._klik_id)
             await self._async_login()
+            _LOGGER.info("Kreta authentication successful (full login)")
 
     async def async_reauthenticate(self) -> None:
         """Reauthenticate explicitly after an auth failure."""
@@ -264,7 +284,10 @@ class KretaApiClient:
 
         if response.status >= 400:
             body = await response.text()
-            raise KretaApiError(f"Kreta request failed ({response.status}) for {url}: {body}")
+            _LOGGER.debug("Full error response body for %s: %s", url, body)
+            raise KretaApiError(
+                f"Kreta request failed ({response.status}) for {url}: {_summarize_error_body(body)}"
+            )
         return response
 
     async def _async_exchange_refresh_token(self, refresh_token: str) -> None:
@@ -287,8 +310,9 @@ class KretaApiClient:
             raise InvalidAuthError("Stored refresh token is no longer valid")
         if response.status >= 400:
             body = await response.text()
+            _LOGGER.debug("Full error response body for token exchange: %s", body)
             raise KretaApiError(
-                f"Refresh-token exchange failed ({response.status}): {body}"
+                f"Refresh-token exchange failed ({response.status}): {_summarize_error_body(body)}"
             )
 
         payload = await response.json()
