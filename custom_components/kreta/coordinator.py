@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -214,7 +214,7 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
         except CannotConnectError as err:
             raise UpdateFailed(str(err)) from err
         except KretaApiError as err:
-            raise ConfigEntryNotReady(str(err)) from err
+            raise UpdateFailed(str(err)) from err
 
         merged_events = merge_lessons_and_tests(lessons, tests)
         payload = {
