@@ -110,13 +110,17 @@ class KretaApiClient:
 
             refresh_token = await self._token_store.async_get_refresh_token()
             if refresh_token and not force_login:
+                _LOGGER.info("Authenticating with Kreta using stored refresh token")
                 try:
                     await self._async_exchange_refresh_token(refresh_token)
+                    _LOGGER.info("Kreta authentication successful (refresh token)")
                     return
                 except InvalidAuthError:
                     _LOGGER.debug("Stored refresh token rejected, falling back to login")
 
+            _LOGGER.info("Performing full Kreta login for %s", self._klik_id)
             await self._async_login()
+            _LOGGER.info("Kreta authentication successful (full login)")
 
     async def async_reauthenticate(self) -> None:
         """Reauthenticate explicitly after an auth failure."""
