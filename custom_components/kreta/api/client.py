@@ -280,6 +280,7 @@ class KretaApiClient:
 
         if response.status >= 400:
             body = await response.text()
+            _LOGGER.debug("Full error response body for %s: %s", url, body)
             raise KretaApiError(
                 f"Kreta request failed ({response.status}) for {url}: {_summarize_error_body(body)}"
             )
@@ -305,6 +306,7 @@ class KretaApiClient:
             raise InvalidAuthError("Stored refresh token is no longer valid")
         if response.status >= 400:
             body = await response.text()
+            _LOGGER.debug("Full error response body for token exchange: %s", body)
             raise KretaApiError(
                 f"Refresh-token exchange failed ({response.status}): {_summarize_error_body(body)}"
             )
