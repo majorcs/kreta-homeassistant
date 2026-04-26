@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.26.2
+
+### Changed
+
+- **Timetable JSON sensor disabled by default**: the `sensor.<name>_timetable_json` entity is now disabled in the entity registry by default. Because the attribute payload routinely exceeds the HA recorder's 16 384-byte limit, keeping the entity enabled caused a recurring warning in the HA log. Users who need the JSON data in automations can re-enable the entity in the HA UI; they may also want to add a recorder exclusion in `configuration.yaml`.
+
 ## 2026.04.26.1
 
 ### Added

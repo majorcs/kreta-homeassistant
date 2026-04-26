@@ -258,6 +258,15 @@ async def test_sensor_entity_exposes_json_attributes() -> None:
     assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
 
 
+async def test_json_sensor_disabled_by_default() -> None:
+    """JSON sensor must be disabled in the entity registry by default to suppress recorder warnings."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaJsonSensor(entry, runtime)
+    assert entity.entity_registry_enabled_default is False
+
+
 async def test_sensor_entity_handles_missing_data_and_setup(hass) -> None:
     """Sensor setup should add entities and empty coordinators should be safe."""
     entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
