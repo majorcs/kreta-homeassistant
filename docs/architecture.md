@@ -174,6 +174,11 @@ If no stable match is available, the announced test becomes a separate calendar 
 
 - config entry setup/unload
 - shared client/coordinator lifecycle
+- midnight refresh scheduling via `async_track_time_change`
+
+### `button.py`
+
+- Refresh button entity that triggers an immediate coordinator refresh
 
 ### `config_flow.py`
 
@@ -195,6 +200,8 @@ If no stable match is available, the announced test becomes a separate calendar 
 ### `sensor.py`
 
 - JSON text sensor
+- Last Refresh timestamp sensor (diagnostic)
+- Update Status enum sensor with error details in attributes (diagnostic)
 - pupil/account metadata exposure when appropriate
 
 ### `api/*`

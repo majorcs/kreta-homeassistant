@@ -177,6 +177,8 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
         """Initialize the coordinator."""
         self.client = client
         self.config_entry = config_entry
+        self.last_error_message: str | None = None
+        self.last_error_time: datetime | None = None
         refresh_hours = config_entry.options.get(
             CONF_REFRESH_HOURS,
             config_entry.data.get(CONF_REFRESH_HOURS, DEFAULT_REFRESH_HOURS),
@@ -218,10 +220,16 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             lessons = await self.client.async_get_lessons(week_start, week_end)
             tests = await self.client.async_get_announced_tests(week_start, week_end)
         except InvalidAuthError as err:
+            self.last_error_message = str(err)
+            self.last_error_time = dt_util.utcnow()
             raise ConfigEntryAuthFailed("Kreta authentication failed") from err
         except CannotConnectError as err:
+            self.last_error_message = str(err)
+            self.last_error_time = dt_util.utcnow()
             raise UpdateFailed(str(err)) from err
         except KretaApiError as err:
+            self.last_error_message = str(err)
+            self.last_error_time = dt_util.utcnow()
             raise UpdateFailed(str(err)) from err
 
         merged_events = merge_lessons_and_tests(lessons, tests)
@@ -246,6 +254,8 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             },
         }
 
+        self.last_error_message = None
+        self.last_error_time = None
         return KretaCoordinatorData(
             profile=profile,
             events=merged_events,

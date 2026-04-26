@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.26.1
+
+### Added
+
+- **Midnight forced refresh**: the coordinator now schedules an automatic refresh every day at 00:00:30 local time so that day-scoped sensor data (school day, exam day) is always current after midnight, regardless of the configured periodic interval.
+- **Last Refresh sensor** (`sensor.<name>_last_refresh`): a `TIMESTAMP` diagnostic sensor that reports the exact datetime of the last successful data fetch.
+- **Update Status sensor** (`sensor.<name>_update_status`): an `ENUM` diagnostic sensor with states `ok` / `error`. On failure, its attributes include `last_error` (the error message), `last_error_time` (when it occurred), and — when previous data is available — `last_success`, `range_start`, `range_end`, `lessons_count`, and `tests_count`. Error state is automatically cleared on the next successful refresh.
+- **Refresh button** (`button.<name>_refresh`): a diagnostic button entity that triggers an immediate coordinator refresh on press.
+
 ## 2026.04.25.2
 
 ### Changed

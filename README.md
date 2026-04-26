@@ -13,6 +13,11 @@ Az integráció célja, hogy a napi iskolai információk egyszerűbben jelenjen
 - órarend megjelenítése a Home Assistant naptárában
 - bejelentett számonkérések megjelenítése az órarendi bejegyzések mellett, vagy külön naptári eseményként
 - gépileg jól feldolgozható JSON szöveges szenzor az órarendi és vizsgaadatokhoz
+- bináris szenzor a mai és holnapi tanítási illetve számonkérési napokhoz
+- `Utolsó frissítés` időbélyeg szenzor
+- `Frissítési állapot` szenzor az utolsó adatfrissítés sikerességéről, részletekkel (hibaüzenet, időpont)
+- kézi azonnali frissítés gomb
+- automatikus frissítés minden éjfél után, hogy a napi adatok időben frissüljenek
 - több tanuló kezelése külön integrációs példányokkal
 
 ## Telepítés
@@ -47,7 +52,10 @@ Ha több gyermekhez több Kreta-hozzáférésed van, minden tanulóhoz külön i
 
 - Az órák és a számonkérések a Home Assistant naptárában jelennek meg.
 - A JSON szöveges szenzor külső eszközökkel vagy automatizmusokkal is felhasználható.
-- Az adatok a beállított frissítési időköz szerint frissülnek.
+- Az **Utolsó frissítés** szenzor (diagnosztika) mutatja, mikor történt az utolsó sikeres adatlekérés.
+- A **Frissítési állapot** szenzor (diagnosztika) jelzi az utolsó frissítés sikerességét (`ok` / `error`), és attribútumaiban tartalmazza a hibaüzenetet, a hiba időpontját, valamint az utolsó sikeres frissítés adatait.
+- A **Refresh** gomb (diagnosztika) azonnali adatfrissítést indít.
+- Az adatok a beállított frissítési időköz szerint frissülnek, valamint automatikusan minden éjfél után (00:00:30), hogy a napi adatok mindig naprakészek legyenek.
 
 ## Jogi megjegyzés
 

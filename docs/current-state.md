@@ -21,6 +21,8 @@ This document records the current implementation and publication state of the Kr
 7. Local Home Assistant launcher and dedicated manual test environment added.
 8. Announced-test timezone rollover bug fixed and covered by regression tests.
 9. Repository published, release created, and GitHub Actions failures resolved.
+10. Binary sensors for school day and exam day (today and tomorrow) added.
+11. Midnight forced refresh, Last Refresh sensor, Update Status sensor, and Refresh button added.
 
 ## Important repository notes
 

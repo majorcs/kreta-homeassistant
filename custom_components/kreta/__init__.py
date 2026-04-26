@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_change
 
 from .api.client import KretaApiClient
 from .api.storage import KretaTokenStore
@@ -68,6 +70,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: KretaConfigEntry) -> boo
     hass.data[DOMAIN][entry.entry_id] = KretaRuntimeData(
         client=client,
         coordinator=coordinator,
+    )
+
+    async def _midnight_refresh(_now: datetime) -> None:
+        """Trigger a coordinator refresh after midnight to capture the new day's data."""
+        await coordinator.async_request_refresh()
+
+    entry.async_on_unload(
+        async_track_time_change(hass, _midnight_refresh, hour=0, minute=0, second=30)
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

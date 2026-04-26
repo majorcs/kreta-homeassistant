@@ -15,10 +15,15 @@ from custom_components.kreta.api.models import AnnouncedTest, MergedCalendarEven
 from custom_components.kreta.api.storage import KretaTokenStore
 from custom_components.kreta.binary_sensor import KretaDayBinarySensor
 from custom_components.kreta.binary_sensor import async_setup_entry as async_setup_binary_sensor_entry
+from custom_components.kreta.button import KretaRefreshButton
+from custom_components.kreta.button import async_setup_entry as async_setup_button_entry
 from custom_components.kreta.calendar import async_setup_entry as async_setup_calendar_entry
 from custom_components.kreta.calendar import KretaCalendarEntity
 from custom_components.kreta.const import (
     ATTR_EVENTS_JSON,
+    ATTR_LAST_ERROR,
+    ATTR_LAST_ERROR_TIME,
+    ATTR_LAST_SUCCESS,
     ATTR_PROFILE,
     CONF_KLIK_ID,
     CONF_LOOKAHEAD_WEEKS,
@@ -26,7 +31,7 @@ from custom_components.kreta.const import (
     CONF_USER_ID,
     DOMAIN,
 )
-from custom_components.kreta.sensor import KretaJsonSensor
+from custom_components.kreta.sensor import KretaJsonSensor, KretaLastRefreshSensor, KretaUpdateStatusSensor
 from custom_components.kreta.sensor import async_setup_entry as async_setup_sensor_entry
 
 
@@ -52,6 +57,9 @@ class DummyCoordinator:
     """Minimal coordinator stub."""
 
     data: DummyCoordinatorData
+    last_update_success: bool = True
+    last_error_message: str | None = None
+    last_error_time: datetime | None = None
 
 
 def _event(start: datetime, summary: str, source: str = "lesson") -> MergedCalendarEvent:
@@ -316,3 +324,104 @@ async def test_binary_sensor_entities_handle_missing_data_and_setup(hass) -> Non
 
     assert len(added) == 4
     assert all(entity.is_on is None for entity in added)
+
+
+async def test_last_refresh_sensor_exposes_timestamp() -> None:
+    """Last refresh sensor should return the coordinator's last_success datetime."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaLastRefreshSensor(entry, runtime)
+
+    assert entity.native_value == runtime.coordinator.data.last_success
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_last_refresh_sensor_handles_missing_data() -> None:
+    """Last refresh sensor should return None when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaLastRefreshSensor(entry, runtime)
+
+    assert entity.native_value is None
+
+
+async def test_update_status_sensor_reports_ok_on_success() -> None:
+    """Update status sensor should return 'ok' when last update succeeded."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaUpdateStatusSensor(entry, runtime)
+
+    assert entity.native_value == "ok"
+    attrs = entity.extra_state_attributes
+    assert ATTR_LAST_SUCCESS in attrs
+    assert "lessons_count" in attrs
+    assert "tests_count" in attrs
+    assert ATTR_LAST_ERROR not in attrs
+    assert ATTR_LAST_ERROR_TIME not in attrs
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_update_status_sensor_reports_error_with_details() -> None:
+    """Update status sensor should return 'error' and expose error details when last update failed."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    runtime.coordinator.last_update_success = False
+    runtime.coordinator.last_error_message = "Connection refused"
+    runtime.coordinator.last_error_time = now
+
+    entity = KretaUpdateStatusSensor(entry, runtime)
+
+    assert entity.native_value == "error"
+    attrs = entity.extra_state_attributes
+    assert attrs[ATTR_LAST_ERROR] == "Connection refused"
+    assert attrs[ATTR_LAST_ERROR_TIME] == now.isoformat()
+
+
+async def test_refresh_button_press_triggers_coordinator_refresh() -> None:
+    """Pressing the refresh button should request a coordinator refresh."""
+    from unittest.mock import AsyncMock
+
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    runtime.coordinator.async_request_refresh = AsyncMock()
+    entity = KretaRefreshButton(entry, runtime)
+
+    await entity.async_press()
+
+    runtime.coordinator.async_request_refresh.assert_awaited_once()
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_button_setup_adds_entity(hass) -> None:
+    """Button setup should add one refresh button entity."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    added: list = []
+
+    await async_setup_button_entry(hass, entry, added.extend)
+
+    assert len(added) == 1
+    assert isinstance(added[0], KretaRefreshButton)
+
+
+async def test_sensor_setup_adds_three_entities(hass) -> None:
+    """Sensor setup should register JSON, last-refresh, and update-status sensors."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    added: list = []
+
+    await async_setup_sensor_entry(hass, entry, added.extend)
+
+    assert len(added) == 3
+    entity_types = {type(e) for e in added}
+    assert KretaJsonSensor in entity_types
+    assert KretaLastRefreshSensor in entity_types
+    assert KretaUpdateStatusSensor in entity_types
+
