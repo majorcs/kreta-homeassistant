@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
@@ -39,6 +40,7 @@ class KretaCoordinatorData:
     range_start: datetime
     range_end: datetime
     payload_json: str
+    compact_payload_json: str
     last_success: datetime
 
 
@@ -254,6 +256,18 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             },
         }
 
+        days: dict[str, list] = defaultdict(list)
+        for event in merged_events:
+            days[event.start.date().isoformat()].append(event.as_compact_dict())
+        compact_payload = {
+            "student": profile.as_dict(),
+            "days": dict(days),
+            "generated_at": dt_util.utcnow().isoformat(),
+            "range_start": range_start.date().isoformat(),
+            "range_end": range_end.date().isoformat(),
+            "counts": {"lessons": len(lessons), "tests": len(tests), "events": len(merged_events)},
+        }
+
         self.last_error_message = None
         self.last_error_time = None
         return KretaCoordinatorData(
@@ -264,5 +278,6 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             range_start=range_start,
             range_end=range_end,
             payload_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            compact_payload_json=json.dumps(compact_payload, ensure_ascii=False, separators=(",", ":")),
             last_success=dt_util.utcnow(),
         )

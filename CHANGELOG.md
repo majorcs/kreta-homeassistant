@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.26.3
+
+### Added
+
+- **Compact Timetable JSON sensor** (`sensor.<name>_compact_timetable_json`): a new sensor enabled by default that exposes the timetable as a compact, daily-grouped JSON payload (~4 KB vs ~16 KB for the full JSON sensor). Events are grouped under a `days` dict keyed by `YYYY-MM-DD`; each entry contains only `start` (HH:MM), `end` (HH:MM), `summary`, `idx` (lesson index), and `exam` (boolean). The sensor state shows the **number of school days** covered by the payload, making it easy to read at a glance in the HA UI and suitable for space-constrained consumers such as ESP32-based displays.
+
 ## 2026.04.26.2
 
 ### Changed
