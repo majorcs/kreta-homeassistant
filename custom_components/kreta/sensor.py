@@ -46,16 +46,17 @@ async def async_setup_entry(
 class KretaJsonSensor(CoordinatorEntity, SensorEntity):
     """A sensor exposing Kreta data for machine processing.
 
-    Disabled by default to prevent the HA recorder from attempting to store the
-    large JSON payload in its database (the attribute set routinely exceeds the
-    16 KB limit).  Users who need the entity in automations can enable it via
-    the HA UI; they may also want to add a recorder exclusion in their
-    configuration.yaml to avoid the attribute-size warning.
+    Disabled by default to avoid enabling it for users who don't need it.
+    Large attributes (profile, events list, full JSON payload) are excluded
+    from the recorder via _unrecorded_attributes so they are available at
+    runtime for automations and templates without hitting the 16 KB storage
+    limit.
     """
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:code-json"
     _attr_entity_registry_enabled_default = False
+    _unrecorded_attributes = frozenset({ATTR_EVENTS_JSON, ATTR_EVENTS, ATTR_PROFILE})
 
     def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
         """Initialize the sensor."""

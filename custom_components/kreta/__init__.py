@@ -8,7 +8,6 @@ from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_change
 
@@ -82,40 +81,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: KretaConfigEntry) -> boo
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    _async_disable_json_sensor_for_existing_install(hass, entry)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
-
-
-def _async_disable_json_sensor_for_existing_install(
-    hass: HomeAssistant, entry: KretaConfigEntry
-) -> None:
-    """Disable the JSON sensor in the entity registry if it was previously enabled by default.
-
-    Introduced in 2026.04.26.2: the JSON sensor is disabled by default
-    (_attr_entity_registry_enabled_default = False) to prevent recorder
-    warnings caused by the large attribute payload.  For installations that
-    pre-date this change the entity is already in the entity registry as
-    enabled; this one-time migration disables it via the INTEGRATION disabler
-    so the recorder stops trying to store it.
-    Users who intentionally want the entity can re-enable it through the HA UI
-    (that sets disabled_by to USER, which this code does not touch).
-    """
-    registry = er.async_get(hass)
-    entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_json")
-    if entity_id is None:
-        return
-    reg_entry = registry.async_get(entity_id)
-    if reg_entry is None or reg_entry.disabled_by is not None:
-        # Already disabled (by any source) — leave it alone.
-        return
-    _LOGGER.debug(
-        "Disabling JSON sensor %s to prevent recorder attribute-size warnings",
-        entity_id,
-    )
-    registry.async_update_entity(
-        entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
-    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: KretaConfigEntry) -> bool:

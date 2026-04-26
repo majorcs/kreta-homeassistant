@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.26.4
+
+### Fixed
+
+- **Timetable JSON sensor no longer re-disables itself after the user enables it.**
+  Previously, a migration helper ran on every config-entry reload and disabled the
+  JSON sensor entity whenever its `disabled_by` field was `None`. Because Home
+  Assistant sets `disabled_by` to `None` (not `"user"`) when a user enables a
+  previously-disabled entity, the helper could not distinguish "enabled by the user"
+  from "enabled by default", and silently forced the entity back to
+  `disabled_by: "integration"` on every restart or reload.
+  The migration helper has been removed; `_attr_entity_registry_enabled_default = False`
+  already handles new installs correctly, and existing entities whose `disabled_by`
+  state was already persisted in the registry are no longer touched.
+- **Recorder attribute-size warning eliminated for enabled JSON sensor.**
+  Added `_unrecorded_attributes` to `KretaJsonSensor` covering the three large
+  attribute keys (`payload_json`, `events`, `profile`). The HA recorder now skips
+  these keys, keeping the stored state well under the 16 384-byte limit without
+  any `configuration.yaml` exclusion needed. The attributes remain fully accessible
+  at runtime for automations and templates.
+
 ## 2026.04.26.3
 
 ### Added

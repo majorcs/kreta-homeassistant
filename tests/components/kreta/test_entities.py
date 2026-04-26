@@ -21,6 +21,7 @@ from custom_components.kreta.calendar import async_setup_entry as async_setup_ca
 from custom_components.kreta.calendar import KretaCalendarEntity
 from custom_components.kreta.const import (
     ATTR_COMPACT_EVENTS_JSON,
+    ATTR_EVENTS,
     ATTR_EVENTS_JSON,
     ATTR_LAST_ERROR,
     ATTR_LAST_ERROR_TIME,
@@ -470,3 +471,15 @@ async def test_compact_json_sensor_handles_missing_data() -> None:
     assert entity.native_value is None
     assert entity.extra_state_attributes == {}
 
+
+
+def test_json_sensor_unrecorded_attributes_excludes_large_attrs() -> None:
+    """KretaJsonSensor._unrecorded_attributes must exclude the large attribute keys.
+
+    These keys are excluded from the HA recorder so the entity can be enabled by
+    the user without triggering the 16 KB attribute-size warning.  They remain
+    accessible at runtime for automations and templates.
+    """
+    assert ATTR_EVENTS_JSON in KretaJsonSensor._unrecorded_attributes
+    assert ATTR_EVENTS in KretaJsonSensor._unrecorded_attributes
+    assert ATTR_PROFILE in KretaJsonSensor._unrecorded_attributes
