@@ -20,6 +20,7 @@ from custom_components.kreta.button import async_setup_entry as async_setup_butt
 from custom_components.kreta.calendar import async_setup_entry as async_setup_calendar_entry
 from custom_components.kreta.calendar import KretaCalendarEntity
 from custom_components.kreta.const import (
+    ATTR_COMPACT_EVENTS_JSON,
     ATTR_EVENTS_JSON,
     ATTR_LAST_ERROR,
     ATTR_LAST_ERROR_TIME,
@@ -31,7 +32,7 @@ from custom_components.kreta.const import (
     CONF_USER_ID,
     DOMAIN,
 )
-from custom_components.kreta.sensor import KretaJsonSensor, KretaLastRefreshSensor, KretaUpdateStatusSensor
+from custom_components.kreta.sensor import KretaCompactJsonSensor, KretaJsonSensor, KretaLastRefreshSensor, KretaUpdateStatusSensor
 from custom_components.kreta.sensor import async_setup_entry as async_setup_sensor_entry
 
 
@@ -49,6 +50,7 @@ class DummyCoordinatorData:
     range_start: datetime
     range_end: datetime
     payload_json: str
+    compact_payload_json: str
     last_success: datetime
 
 
@@ -108,6 +110,7 @@ def _runtime(entry: MockConfigEntry, events: list[MergedCalendarEvent]) -> Kreta
             range_start=events[0].start,
             range_end=events[-1].end,
             payload_json='{"events":2}',
+            compact_payload_json='{"days":{}}',
             last_success=events[0].start,
         )
     )
@@ -418,8 +421,8 @@ async def test_button_setup_adds_entity(hass) -> None:
     assert isinstance(added[0], KretaRefreshButton)
 
 
-async def test_sensor_setup_adds_three_entities(hass) -> None:
-    """Sensor setup should register JSON, last-refresh, and update-status sensors."""
+async def test_sensor_setup_adds_four_entities(hass) -> None:
+    """Sensor setup should register JSON, compact JSON, last-refresh, and update-status sensors."""
     now = datetime.now(TZ)
     entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
     runtime = _runtime(entry, [_event(now, "Matematika")])
@@ -428,9 +431,42 @@ async def test_sensor_setup_adds_three_entities(hass) -> None:
 
     await async_setup_sensor_entry(hass, entry, added.extend)
 
-    assert len(added) == 3
+    assert len(added) == 4
     entity_types = {type(e) for e in added}
     assert KretaJsonSensor in entity_types
+    assert KretaCompactJsonSensor in entity_types
     assert KretaLastRefreshSensor in entity_types
     assert KretaUpdateStatusSensor in entity_types
+
+
+async def test_compact_json_sensor_exposes_days_attribute() -> None:
+    """Compact JSON sensor should expose the compact_events_json attribute."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika", source="lesson_with_exam")])
+    entity = KretaCompactJsonSensor(entry, runtime)
+
+    assert entity.native_value == 1  # one unique school day
+    assert entity.extra_state_attributes[ATTR_COMPACT_EVENTS_JSON] == '{"days":{}}'
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_compact_json_sensor_enabled_by_default() -> None:
+    """Compact JSON sensor must be enabled by default (payload is small enough for HA recorder)."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaCompactJsonSensor(entry, runtime)
+
+    assert entity.entity_registry_enabled_default is True
+
+
+async def test_compact_json_sensor_handles_missing_data() -> None:
+    """Compact JSON sensor should return None state and empty attrs when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaCompactJsonSensor(entry, runtime)
+
+    assert entity.native_value is None
+    assert entity.extra_state_attributes == {}
 

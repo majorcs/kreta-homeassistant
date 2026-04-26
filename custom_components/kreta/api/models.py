@@ -88,3 +88,18 @@ class MergedCalendarEvent:
             "exam": self.exam.as_dict() if self.exam else None,
             "source": self.source,
         }
+
+    def as_compact_dict(self) -> dict[str, Any]:
+        """Return a compact JSON-serializable mapping for space-constrained consumers.
+
+        Drops uid, description, location, subject_name and source; abbreviates
+        lesson_index to idx; collapses start/end to HH:MM time strings; and
+        reduces exam to a simple boolean.
+        """
+        return {
+            "start": self.start.strftime("%H:%M"),
+            "end": self.end.strftime("%H:%M"),
+            "summary": self.summary,
+            "idx": self.lesson_index,
+            "exam": self.exam is not None,
+        }

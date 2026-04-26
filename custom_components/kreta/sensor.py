@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import KretaRuntimeData
 from .const import (
+    ATTR_COMPACT_EVENTS_JSON,
     ATTR_EVENTS,
     ATTR_EVENTS_JSON,
     ATTR_LAST_ERROR,
@@ -36,6 +37,7 @@ async def async_setup_entry(
     runtime_data: KretaRuntimeData = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         KretaJsonSensor(entry, runtime_data),
+        KretaCompactJsonSensor(entry, runtime_data),
         KretaLastRefreshSensor(entry, runtime_data),
         KretaUpdateStatusSensor(entry, runtime_data),
     ])
@@ -100,6 +102,55 @@ class KretaJsonSensor(CoordinatorEntity, SensorEntity):
             ATTR_LAST_SUCCESS: self.coordinator.data.last_success.isoformat(),
             "lessons_count": self.coordinator.data.lessons_count,
             "tests_count": self.coordinator.data.tests_count,
+        }
+
+
+class KretaCompactJsonSensor(CoordinatorEntity, SensorEntity):
+    """A sensor exposing a compact daily Kreta timetable for space-constrained consumers.
+
+    Enabled by default because the payload (~4 KB) is small enough to avoid HA
+    recorder issues.  The format groups lessons by date and strips verbose fields
+    to keep the payload lean (e.g. for ESP32-based displays).
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:code-json"
+    _attr_native_unit_of_measurement = "days"
+
+    def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
+        """Initialize the sensor."""
+        super().__init__(runtime_data.coordinator)
+        self._entry = entry
+        self._runtime_data = runtime_data
+        self._attr_unique_id = f"{entry.entry_id}_compact_json"
+        self._attr_name = "Compact Timetable JSON"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return shared device info."""
+        profile = self.coordinator.data.profile if self.coordinator.data else None
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            manufacturer="Unofficial Kreta Integration",
+            model="Pupil account",
+            name=profile.student_name if profile and profile.student_name else self._entry.title,
+            suggested_area="Education",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the number of school days covered by the compact payload."""
+        if self.coordinator.data is None:
+            return None
+        return len({event.start.date() for event in self.coordinator.data.events})
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the compact timetable payload."""
+        if self.coordinator.data is None:
+            return {}
+        return {
+            ATTR_COMPACT_EVENTS_JSON: self.coordinator.data.compact_payload_json,
         }
 
 

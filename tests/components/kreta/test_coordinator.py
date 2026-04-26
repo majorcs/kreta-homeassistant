@@ -161,6 +161,7 @@ async def test_coordinator_update_data_success(hass) -> None:
     assert data.profile.as_dict()["student_name"] == "Student One"
     assert data.lessons_count == 1
     assert "counts" in data.payload_json
+    assert "days" in data.compact_payload_json
 
 
 @pytest.mark.parametrize(
