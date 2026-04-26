@@ -236,3 +236,72 @@ async def test_kreta_api_error_on_periodic_refresh_keeps_data(hass) -> None:
         await coordinator._async_update_data()
 
     assert coordinator.data is previous_data
+
+
+async def test_coordinator_records_error_info_on_failure(hass) -> None:
+    """Coordinator should store error message and timestamp when an update fails."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Student One (school01)",
+        data={
+            CONF_KLIK_ID: "school01",
+            CONF_USER_ID: "student01",
+            "password": "secret",
+            CONF_REFRESH_HOURS: 12,
+            CONF_LOOKAHEAD_WEEKS: 2,
+        },
+    )
+    client = type("Client", (), {})()
+    client.async_get_student_profile = AsyncMock(side_effect=CannotConnectError("timeout"))
+    client.async_get_lessons = AsyncMock()
+    client.async_get_announced_tests = AsyncMock()
+    coordinator = KretaDataUpdateCoordinator(hass, entry, client)
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator.last_error_message == "timeout"
+    assert coordinator.last_error_time is not None
+
+
+async def test_coordinator_clears_error_info_on_success(hass) -> None:
+    """Coordinator should clear error state when a subsequent update succeeds."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Student One (school01)",
+        data={
+            CONF_KLIK_ID: "school01",
+            CONF_USER_ID: "student01",
+            "password": "secret",
+            CONF_REFRESH_HOURS: 12,
+            CONF_LOOKAHEAD_WEEKS: 2,
+        },
+    )
+    lesson = _lesson(
+        "math-1",
+        "Matematika",
+        datetime(2026, 4, 27, 8, 0, tzinfo=TZ),
+        datetime(2026, 4, 27, 8, 45, tzinfo=TZ),
+        1,
+    )
+    profile = type("Profile", (), {"as_dict": lambda self: {"student_name": "Student One"}})()
+    client = type("Client", (), {})()
+    client.async_get_student_profile = AsyncMock(side_effect=CannotConnectError("timeout"))
+    client.async_get_lessons = AsyncMock()
+    client.async_get_announced_tests = AsyncMock()
+    coordinator = KretaDataUpdateCoordinator(hass, entry, client)
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator.last_error_message is not None
+
+    client.async_get_student_profile = AsyncMock(return_value=profile)
+    client.async_get_lessons = AsyncMock(return_value=[lesson])
+    client.async_get_announced_tests = AsyncMock(return_value=[])
+
+    await coordinator._async_update_data()
+
+    assert coordinator.last_error_message is None
+    assert coordinator.last_error_time is None
+

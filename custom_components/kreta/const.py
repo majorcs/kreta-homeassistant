@@ -19,7 +19,7 @@ MAX_REFRESH_HOURS = 24
 MIN_LOOKAHEAD_WEEKS = 1
 MAX_LOOKAHEAD_WEEKS = 4
 
-PLATFORMS: list[Platform] = [Platform.CALENDAR, Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.CALENDAR, Platform.SENSOR, Platform.BINARY_SENSOR]
 
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}_tokens"
@@ -32,5 +32,7 @@ ATTR_TESTS = "tests"
 ATTR_RANGE_START = "range_start"
 ATTR_RANGE_END = "range_end"
 ATTR_LAST_SUCCESS = "last_success"
+ATTR_LAST_ERROR = "last_error"
+ATTR_LAST_ERROR_TIME = "last_error_time"
 
 DEFAULT_TIMEOUT_SECONDS = 30
