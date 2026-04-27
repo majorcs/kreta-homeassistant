@@ -114,15 +114,36 @@ async def test_async_authenticate_uses_stored_refresh_token() -> None:
 
 
 async def test_async_authenticate_falls_back_to_login_when_refresh_fails() -> None:
-    """A rejected refresh token should trigger a full login."""
+    """A rejected refresh token should trigger a full login and log a warning."""
     client = _client()
     client._token_store.async_get_refresh_token = AsyncMock(return_value="refresh-token")
     client._async_exchange_refresh_token = AsyncMock(side_effect=InvalidAuthError)
     client._async_login = AsyncMock()
 
-    await client.async_authenticate()
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        await client.async_authenticate()
 
     client._async_login.assert_awaited_once()
+    mock_logger.warning.assert_any_call(
+        "Stored refresh token rejected for %s, falling back to full login",
+        client._klik_id,
+    )
+
+
+async def test_async_authenticate_no_refresh_token_logs_warning() -> None:
+    """Missing stored refresh token should trigger a full login and log a warning."""
+    client = _client()
+    client._token_store.async_get_refresh_token = AsyncMock(return_value=None)
+    client._async_login = AsyncMock()
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        await client.async_authenticate()
+
+    client._async_login.assert_awaited_once()
+    mock_logger.warning.assert_any_call(
+        "No stored refresh token for %s, performing full login",
+        client._klik_id,
+    )
 
 
 async def test_async_authenticate_returns_early_with_access_token() -> None:
@@ -367,6 +388,20 @@ async def test_async_exchange_refresh_token_success_and_invalid() -> None:
         await client._async_exchange_refresh_token("refresh-token")
 
 
+async def test_async_exchange_refresh_token_preserves_stored_token_when_no_new_one() -> None:
+    """If the server omits refresh_token in its response, the stored token must not be wiped."""
+    client = _client()
+    await client._token_store.async_set_refresh_token("existing-refresh")
+    client._session.post = AsyncMock(
+        return_value=FakeResponse(status=200, json_data={"access_token": "access"})
+    )
+
+    await client._async_exchange_refresh_token("existing-refresh")
+
+    assert client._access_token == "access"
+    assert await client._token_store.async_get_refresh_token() == "existing-refresh"
+
+
 async def test_async_exchange_refresh_token_raises_on_transport_error() -> None:
     """Refresh-token transport failures should raise CannotConnectError."""
     client = _client()
@@ -405,6 +440,41 @@ async def test_async_login_success() -> None:
 
     assert client._access_token == "access"
     assert await client._token_store.async_get_refresh_token() == "refresh"
+
+
+async def test_async_login_preserves_stored_token_and_warns_when_no_refresh_token() -> None:
+    """If full login response omits refresh_token, warn and keep any existing stored token."""
+    client = _client()
+    await client._token_store.async_set_refresh_token("existing-refresh")
+    client._session.get = AsyncMock(
+        side_effect=[
+            FakeResponse(
+                status=200,
+                text_data='<input name="__RequestVerificationToken" type="hidden" value="abc123">',
+            ),
+            FakeResponse(
+                status=302,
+                headers={"location": "https://example.test/callback?code=auth-code"},
+            ),
+        ]
+    )
+    client._session.post = AsyncMock(
+        side_effect=[
+            FakeResponse(status=200),
+            FakeResponse(status=200, json_data={"access_token": "access"}),
+        ]
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        await client._async_login()
+
+    assert client._access_token == "access"
+    assert await client._token_store.async_get_refresh_token() == "existing-refresh"
+    mock_logger.warning.assert_any_call(
+        "Full login for %s did not return a refresh token; "
+        "stored token (if any) is preserved",
+        client._klik_id,
+    )
 
 
 async def test_async_login_requires_redirect_location() -> None:

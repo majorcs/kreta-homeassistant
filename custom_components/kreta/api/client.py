@@ -116,7 +116,15 @@ class KretaApiClient:
                     _LOGGER.info("Kreta authentication successful (refresh token)")
                     return
                 except InvalidAuthError:
-                    _LOGGER.debug("Stored refresh token rejected, falling back to login")
+                    _LOGGER.warning(
+                        "Stored refresh token rejected for %s, falling back to full login",
+                        self._klik_id,
+                    )
+            elif not force_login:
+                _LOGGER.warning(
+                    "No stored refresh token for %s, performing full login",
+                    self._klik_id,
+                )
 
             _LOGGER.info("Performing full Kreta login for %s", self._klik_id)
             await self._async_login()
@@ -319,7 +327,9 @@ class KretaApiClient:
         if "access_token" not in payload:
             raise InvalidAuthError("Refresh-token exchange did not return an access token")
         self._access_token = payload["access_token"]
-        await self._token_store.async_set_refresh_token(payload.get("refresh_token"))
+        new_refresh = payload.get("refresh_token")
+        if new_refresh is not None:
+            await self._token_store.async_set_refresh_token(new_refresh)
 
     async def _async_login(self) -> None:
         """Perform the interactive login flow to obtain a new refresh token."""
@@ -390,7 +400,15 @@ class KretaApiClient:
         if "access_token" not in payload:
             raise InvalidAuthError("Login response did not include an access token")
         self._access_token = payload["access_token"]
-        await self._token_store.async_set_refresh_token(payload.get("refresh_token"))
+        new_refresh = payload.get("refresh_token")
+        if new_refresh is not None:
+            await self._token_store.async_set_refresh_token(new_refresh)
+        else:
+            _LOGGER.warning(
+                "Full login for %s did not return a refresh token; "
+                "stored token (if any) is preserved",
+                self._klik_id,
+            )
 
     @staticmethod
     def _parse_datetime(value: str) -> datetime:
