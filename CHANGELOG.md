@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.27.1
+
+### Fixed
+
+- **Full re-login no longer silently wipes the stored refresh token.**
+  When Kreta's IDP responded to a token refresh or full login request without
+  including a new `refresh_token` field (valid in OAuth2 when token rotation is
+  disabled), the code previously called `async_set_refresh_token(None)`, which
+  deleted the stored token. On the next HA restart or 12-hour refresh cycle the
+  token was gone, forcing an unnecessary full interactive login. The stored token
+  is now preserved when the server omits a replacement. A `WARNING` is emitted if
+  the full PKCE login itself returns no refresh token, since `offline_access` scope
+  is always requested.
+
+### Changed
+
+- **Authentication log messages are now at `WARNING` level when a full login is
+  triggered unexpectedly.**
+  Previously, the reason for a full re-login was invisible in standard INFO-level
+  logs. Two new `WARNING` messages explain why:
+  - `No stored refresh token for <klik_id>, performing full login` — emitted when
+    no token is found in storage (e.g. first run or after a wipe).
+  - `Stored refresh token rejected for <klik_id>, falling back to full login` —
+    emitted when the IDP rejects the stored token (was previously logged at DEBUG).
+
 ## 2026.04.26.4
 
 ### Fixed
