@@ -131,16 +131,21 @@ class KretaApiClient:
             _LOGGER.info("Kreta authentication successful (full login)")
 
     async def async_reauthenticate(self) -> None:
-        """Reauthenticate explicitly after an auth failure."""
+        """Reauthenticate explicitly after an auth failure.
+
+        Clears the stale access token and re-runs the normal auth flow so the
+        stored refresh token is tried before falling back to a full login.
+        """
         async with self._auth_lock:
             self._access_token = None
-        await self.async_authenticate(force_login=True)
+        await self.async_authenticate()
 
     async def async_get_student_profile(self) -> StudentProfile:
         """Fetch the pupil profile."""
+        _LOGGER.info("Fetching student profile")
         payload = await self._async_get_json("Sajat/TanuloAdatlap")
         birth_date = payload.get("SzuletesiDatum")
-        return StudentProfile(
+        profile = StudentProfile(
             student_name=payload.get("Nev"),
             birth_name=payload.get("SzuletesiNev"),
             birth_place=payload.get("SzuletesiHely"),
@@ -150,11 +155,14 @@ class KretaApiClient:
             school_name=payload.get("Intezmeny", {}).get("TeljesNev"),
             birth_date=birth_date.split("T", 1)[0] if birth_date else None,
         )
+        _LOGGER.info("Student profile fetched: %s", profile.student_name)
+        return profile
 
     async def async_get_lessons(
         self, start_date: date, end_date: date
     ) -> list[MergedCalendarEvent]:
         """Fetch timetable entries and normalize them to lesson events."""
+        _LOGGER.info("Fetching lessons %s → %s", start_date, end_date)
         payload = await self._async_get_json(
             "Sajat/OrarendElemek",
             params={"datumTol": start_date.isoformat(), "datumIg": end_date.isoformat()},
@@ -193,12 +201,14 @@ class KretaApiClient:
                 )
             )
         lessons.sort(key=lambda lesson: (lesson.start, lesson.lesson_index or 0, lesson.uid))
+        _LOGGER.info("Lessons fetched: %d entries", len(lessons))
         return lessons
 
     async def async_get_announced_tests(
         self, start_date: date, end_date: date
     ) -> list[AnnouncedTest]:
         """Fetch announced tests, splitting into month-sized chunks when needed."""
+        _LOGGER.info("Fetching announced tests %s → %s", start_date, end_date)
         tests: list[AnnouncedTest] = []
         chunk_start = start_date
         while chunk_start <= end_date:
@@ -228,8 +238,15 @@ class KretaApiClient:
                         mode=item.get("Modja", {}).get("Leiras"),
                     )
                 )
+            _LOGGER.debug(
+                "Fetched %d announced tests for chunk %s → %s",
+                len(payload),
+                chunk_start,
+                chunk_end,
+            )
             chunk_start = chunk_end + timedelta(days=1)
         tests.sort(key=lambda item: (item.test_date, item.lesson_index or 0, item.subject_name))
+        _LOGGER.info("Announced tests fetched: %d total", len(tests))
         return tests
 
     async def _async_get_json(
@@ -261,6 +278,7 @@ class KretaApiClient:
         if require_auth and self._access_token is not None:
             request_headers["Authorization"] = f"Bearer {self._access_token}"
 
+        _LOGGER.debug("→ %s %s", method.upper(), url)
         try:
             response = await self._session.request(
                 method,
@@ -274,6 +292,7 @@ class KretaApiClient:
         except ClientError as err:
             raise CannotConnectError(f"Could not reach Kreta endpoint {url}") from err
 
+        _LOGGER.debug("← %s %s %d", method.upper(), url, response.status)
         if response.status in {401, 403}:
             response.release()
             if retry_on_auth_error:

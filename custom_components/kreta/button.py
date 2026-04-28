@@ -52,4 +52,4 @@ class KretaRefreshButton(CoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Trigger an immediate coordinator refresh."""
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()

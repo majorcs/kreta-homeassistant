@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.04.28.1
+
+### Fixed
+
+- **Midnight scheduled refresh no longer performs a full re-login when the access token expires.**
+  Previously, `async_reauthenticate()` called `async_authenticate(force_login=True)`, which
+  bypassed the stored refresh token entirely and fell straight through to the full
+  interactive login flow. The `force_login` flag was unnecessary because the access token
+  is already cleared before that call. The normal auth flow now correctly tries the stored
+  refresh token first and only falls back to a full login if the refresh token is also rejected.
+
+- **Pressing the Refresh button now always triggers an immediate data update.**
+  The button previously called `async_request_refresh()`, which is debounced by Home Assistant
+  and could be silently skipped if a natural refresh had occurred recently. It now calls
+  `async_refresh()` for a guaranteed, non-debounced update.
+
+### Added
+
+- **INFO-level logging for each Kreta API call.**
+  Each API interaction (student profile, lessons, announced tests) now emits INFO-level log
+  messages showing when the request starts and how many items were returned. This makes it
+  easy to trace what the integration is doing in production without enabling debug logging.
+  Low-level HTTP request and response details remain at DEBUG level.
+
 ## 2026.04.27.1
 
 ### Fixed

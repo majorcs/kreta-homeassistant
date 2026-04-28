@@ -400,12 +400,12 @@ async def test_refresh_button_press_triggers_coordinator_refresh() -> None:
     now = datetime.now(TZ)
     entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
     runtime = _runtime(entry, [_event(now, "Matematika")])
-    runtime.coordinator.async_request_refresh = AsyncMock()
+    runtime.coordinator.async_refresh = AsyncMock()
     entity = KretaRefreshButton(entry, runtime)
 
     await entity.async_press()
 
-    runtime.coordinator.async_request_refresh.assert_awaited_once()
+    runtime.coordinator.async_refresh.assert_awaited_once()
     assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
 
 
