@@ -157,8 +157,8 @@ async def test_async_authenticate_returns_early_with_access_token() -> None:
     client._async_login.assert_not_awaited()
 
 
-async def test_async_reauthenticate_clears_token_and_logs_in() -> None:
-    """Reauthentication should clear the cached access token first."""
+async def test_async_reauthenticate_clears_token_and_uses_refresh_token() -> None:
+    """Reauthentication should clear the cached access token and try the refresh token first."""
     client = _client()
     client._access_token = "stale-token"
     client.async_authenticate = AsyncMock()
@@ -166,7 +166,21 @@ async def test_async_reauthenticate_clears_token_and_logs_in() -> None:
     await client.async_reauthenticate()
 
     assert client._access_token is None
-    client.async_authenticate.assert_awaited_once_with(force_login=True)
+    client.async_authenticate.assert_awaited_once_with()
+
+
+async def test_async_reauthenticate_does_not_skip_refresh_token() -> None:
+    """After a 401, reauthentication should use the stored refresh token, not full login."""
+    client = _client()
+    client._access_token = "stale-token"
+    client._token_store.async_get_refresh_token = AsyncMock(return_value="stored-refresh")
+    client._async_exchange_refresh_token = AsyncMock()
+    client._async_login = AsyncMock()
+
+    await client.async_reauthenticate()
+
+    client._async_exchange_refresh_token.assert_awaited_once_with("stored-refresh")
+    client._async_login.assert_not_awaited()
 
 
 async def test_async_get_student_profile() -> None:
