@@ -663,3 +663,367 @@ async def test_exchange_refresh_token_html_error_body_is_summarised() -> None:
 
     with pytest.raises(KretaApiError, match=r"\(HTML response\)"):
         await client._async_exchange_refresh_token("some-refresh-token")
+
+
+# ---------------------------------------------------------------------------
+# diagnostics — sanitization helpers
+# ---------------------------------------------------------------------------
+
+from custom_components.kreta.api.diagnostics import (
+    AuthDiagnosticsTrace,
+    sanitize_form_data,
+    sanitize_redirect_url,
+    sanitize_response_body,
+)
+
+
+def test_sanitize_form_data_redacts_sensitive_keys() -> None:
+    """Sensitive request fields must be redacted; others pass through unchanged."""
+    data = {
+        "Password": "hunter2",
+        "UserName": "student01",
+        "InstituteCode": "school01",
+        "refresh_token": "rt-secret",
+        "__RequestVerificationToken": "csrf-secret",
+        "code": "auth-code-secret",
+        "code_verifier": "verifier-secret",
+        "grant_type": "refresh_token",
+    }
+    result = sanitize_form_data(data)
+
+    assert result["Password"] == "***"
+    assert result["refresh_token"] == "***"
+    assert result["__RequestVerificationToken"] == "***"
+    assert result["code"] == "***"
+    assert result["code_verifier"] == "***"
+    assert result["UserName"] == "student01"
+    assert result["InstituteCode"] == "school01"
+    assert result["grant_type"] == "refresh_token"
+
+
+def test_sanitize_form_data_case_insensitive() -> None:
+    """Redaction must work regardless of field-name capitalisation."""
+    result = sanitize_form_data({"PASSWORD": "secret", "REFRESH_TOKEN": "rt"})
+    assert result["PASSWORD"] == "***"
+    assert result["REFRESH_TOKEN"] == "***"
+
+
+def test_sanitize_response_body_redacts_token_fields() -> None:
+    """JSON responses must have access_token, refresh_token and id_token redacted."""
+    import json
+
+    body = json.dumps({
+        "access_token": "at-secret",
+        "refresh_token": "rt-secret",
+        "id_token": "it-secret",
+        "expires_in": 3600,
+        "token_type": "Bearer",
+    })
+    result = sanitize_response_body(body)
+    parsed = json.loads(result)
+
+    assert parsed["access_token"] == "***"
+    assert parsed["refresh_token"] == "***"
+    assert parsed["id_token"] == "***"
+    assert parsed["expires_in"] == 3600
+    assert parsed["token_type"] == "Bearer"
+
+
+def test_sanitize_response_body_collapses_html() -> None:
+    """HTML bodies must be collapsed to a short label."""
+    assert sanitize_response_body("<!DOCTYPE html><html></html>") == "(HTML response)"
+    assert sanitize_response_body("<html><body>err</body></html>") == "(HTML response)"
+
+
+def test_sanitize_response_body_truncates_long_plain_text() -> None:
+    """Plain-text bodies beyond the limit must be truncated."""
+    long_body = "x" * 600
+    result = sanitize_response_body(long_body)
+    assert result.endswith("…")
+    assert len(result) < 600
+
+
+def test_sanitize_redirect_url_redacts_code_and_nonce() -> None:
+    """Authorization code and nonce must be redacted from redirect URLs."""
+    url = (
+        "https://mobil.e-kreta.hu/oauthredirect"
+        "?code=supersecretcode&state=kreten_student_mobile"
+    )
+    result = sanitize_redirect_url(url)
+    assert "supersecretcode" not in result
+    assert "code=***" in result
+    assert "state=kreten_student_mobile" in result
+
+
+def test_sanitize_redirect_url_passthrough_when_no_sensitive_params() -> None:
+    """URLs with no sensitive params must be returned unchanged."""
+    url = "https://example.test/callback?state=ok"
+    assert sanitize_redirect_url(url) == url
+
+
+# ---------------------------------------------------------------------------
+# diagnostics — AuthDiagnosticsTrace formatting
+# ---------------------------------------------------------------------------
+
+
+def test_auth_trace_formats_all_fields() -> None:
+    """log_failure output must include all recorded step fields."""
+    import logging
+
+    trace = AuthDiagnosticsTrace()
+    trace.record_exchange(
+        label="POST token (refresh)",
+        method="POST",
+        url="https://idp.example.test/connect/token",
+        request_data={"grant_type": "refresh_token", "refresh_token": "rt-secret"},
+        response_status=400,
+        response_body='{"error": "invalid_grant"}',
+    )
+
+    logged_lines: list[str] = []
+
+    class _CapLogger(logging.Logger):
+        def warning(self, msg, *args, **kwargs):
+            logged_lines.append(msg % args if args else msg)
+
+    trace.log_failure(_CapLogger("test"), "school01")
+
+    output = "\n".join(logged_lines)
+    assert "Auth failure HTTP trace for school01" in output
+    assert "POST token (refresh)" in output
+    assert "POST" in output
+    assert "https://idp.example.test/connect/token" in output
+    assert "HTTP 400" in output
+    assert "invalid_grant" in output
+    # Secret must NOT appear
+    assert "rt-secret" not in output
+
+
+def test_auth_trace_records_network_error() -> None:
+    """Network errors must appear in the trace output."""
+    import logging
+
+    trace = AuthDiagnosticsTrace()
+    trace.record_exchange(
+        label="POST token (refresh)",
+        method="POST",
+        url="https://idp.example.test/connect/token",
+        network_error="Connection refused",
+    )
+
+    logged_lines: list[str] = []
+
+    class _CapLogger(logging.Logger):
+        def warning(self, msg, *args, **kwargs):
+            logged_lines.append(msg % args if args else msg)
+
+    trace.log_failure(_CapLogger("test"), "school01")
+    output = "\n".join(logged_lines)
+    assert "Connection refused" in output
+
+
+# ---------------------------------------------------------------------------
+# diagnostics — refresh token exchange
+# ---------------------------------------------------------------------------
+
+
+async def test_exchange_refresh_token_logs_trace_on_rejection() -> None:
+    """A 401 rejection must emit a WARNING with the full HTTP trace."""
+    client = _client()
+    client._session.post = AsyncMock(
+        return_value=FakeResponse(status=401, text_data='{"error":"invalid_grant"}')
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        with pytest.raises(InvalidAuthError):
+            await client._async_exchange_refresh_token("my-refresh-token")
+
+    assert mock_logger.warning.called
+    logged_msg = mock_logger.warning.call_args[0][1]
+    assert "Auth failure HTTP trace" in logged_msg
+    assert "POST" in logged_msg
+    assert "HTTP 401" in logged_msg
+    assert "invalid_grant" in logged_msg
+    # Secrets must NOT appear in the logged output
+    assert "my-refresh-token" not in logged_msg
+
+
+async def test_exchange_refresh_token_logs_trace_on_network_error() -> None:
+    """A transport failure must emit a WARNING trace with the error message."""
+    client = _client()
+    client._session.post = AsyncMock(side_effect=ClientError("connection refused"))
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        with pytest.raises(CannotConnectError):
+            await client._async_exchange_refresh_token("my-refresh-token")
+
+    assert mock_logger.warning.called
+    logged_msg = mock_logger.warning.call_args[0][1]
+    assert "Auth failure HTTP trace" in logged_msg
+    assert "connection refused" in logged_msg
+    assert "my-refresh-token" not in logged_msg
+
+
+async def test_exchange_refresh_token_no_trace_on_success() -> None:
+    """A successful token exchange must NOT emit a diagnostic WARNING."""
+    client = _client()
+    client._session.post = AsyncMock(
+        return_value=FakeResponse(
+            status=200,
+            json_data={"access_token": "access", "refresh_token": "new-refresh"},
+        )
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        await client._async_exchange_refresh_token("old-refresh")
+
+    for call in mock_logger.warning.call_args_list:
+        assert "Auth failure HTTP trace" not in str(call)
+
+
+# ---------------------------------------------------------------------------
+# diagnostics — full login flow
+# ---------------------------------------------------------------------------
+
+
+def _login_ok_get_side_effects() -> list:
+    """Return the standard two successful GET responses for _async_login."""
+    return [
+        FakeResponse(
+            status=200,
+            text_data='<input name="__RequestVerificationToken" type="hidden" value="csrf">',
+        ),
+        FakeResponse(
+            status=302,
+            headers={"location": "https://mobil.e-kreta.hu/oauthredirect?code=auth-code"},
+        ),
+    ]
+
+
+async def test_login_logs_trace_on_authorize_page_failure() -> None:
+    """A failing authorize GET must emit a WARNING trace."""
+    client = _client()
+    client._session.get = AsyncMock(
+        return_value=FakeResponse(status=503, text_data="maintenance")
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        with pytest.raises(InvalidAuthError):
+            await client._async_login()
+
+    assert mock_logger.warning.called
+    logged_msg = mock_logger.warning.call_args[0][1]
+    assert "Auth failure HTTP trace" in logged_msg
+    assert "HTTP 503" in logged_msg
+    assert client._password not in logged_msg
+
+
+async def test_login_logs_trace_on_login_form_failure() -> None:
+    """A failing login form POST must emit a WARNING trace."""
+    client = _client()
+    client._session.get = AsyncMock(
+        return_value=FakeResponse(
+            status=200,
+            text_data='<input name="__RequestVerificationToken" type="hidden" value="csrf">',
+        )
+    )
+    client._session.post = AsyncMock(
+        return_value=FakeResponse(status=401, text_data='{"error":"invalid_credentials"}')
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        with pytest.raises(InvalidAuthError):
+            await client._async_login()
+
+    assert mock_logger.warning.called
+    logged_msg = mock_logger.warning.call_args[0][1]
+    assert "Auth failure HTTP trace" in logged_msg
+    assert "HTTP 401" in logged_msg
+    assert "invalid_credentials" in logged_msg
+    assert client._password not in logged_msg
+    assert "csrf" not in logged_msg
+
+
+async def test_login_logs_trace_on_callback_not_redirecting() -> None:
+    """A non-redirect callback response must emit a WARNING trace."""
+    client = _client()
+    client._session.get = AsyncMock(
+        side_effect=[
+            FakeResponse(
+                status=200,
+                text_data='<input name="__RequestVerificationToken" type="hidden" value="csrf">',
+            ),
+            FakeResponse(status=200, text_data="not a redirect"),
+        ]
+    )
+    client._session.post = AsyncMock(return_value=FakeResponse(status=200))
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        with pytest.raises(InvalidAuthError):
+            await client._async_login()
+
+    assert mock_logger.warning.called
+    logged_msg = mock_logger.warning.call_args[0][1]
+    assert "Auth failure HTTP trace" in logged_msg
+    assert client._password not in logged_msg
+
+
+async def test_login_logs_trace_on_token_exchange_failure() -> None:
+    """A failed authorization-code token exchange must emit a WARNING trace."""
+    client = _client()
+    client._session.get = AsyncMock(side_effect=_login_ok_get_side_effects())
+    client._session.post = AsyncMock(
+        side_effect=[
+            FakeResponse(status=200),
+            FakeResponse(status=400, text_data='{"error":"invalid_code"}'),
+        ]
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        with pytest.raises(InvalidAuthError):
+            await client._async_login()
+
+    assert mock_logger.warning.called
+    logged_msg = mock_logger.warning.call_args[0][1]
+    assert "Auth failure HTTP trace" in logged_msg
+    assert "HTTP 400" in logged_msg
+    assert "invalid_code" in logged_msg
+    # Auth code and password must not appear in the trace
+    assert "auth-code" not in logged_msg
+    assert client._password not in logged_msg
+
+
+async def test_login_logs_trace_on_network_error() -> None:
+    """A transport error during login must emit a WARNING trace."""
+    client = _client()
+    client._session.get = AsyncMock(side_effect=ClientError("timeout"))
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        with pytest.raises(CannotConnectError):
+            await client._async_login()
+
+    assert mock_logger.warning.called
+    logged_msg = mock_logger.warning.call_args[0][1]
+    assert "Auth failure HTTP trace" in logged_msg
+    assert "timeout" in logged_msg
+
+
+async def test_login_no_trace_on_success() -> None:
+    """A successful login flow must NOT emit a diagnostic WARNING trace."""
+    client = _client()
+    client._session.get = AsyncMock(side_effect=_login_ok_get_side_effects())
+    client._session.post = AsyncMock(
+        side_effect=[
+            FakeResponse(status=200),
+            FakeResponse(
+                status=200,
+                json_data={"access_token": "at", "refresh_token": "rt"},
+            ),
+        ]
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        await client._async_login()
+
+    for call in mock_logger.warning.call_args_list:
+        assert "Auth failure HTTP trace" not in str(call)
