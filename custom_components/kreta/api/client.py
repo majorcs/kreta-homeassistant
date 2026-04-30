@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime, timedelta
+import json
 import logging
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -13,6 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DEFAULT_TIMEOUT_SECONDS
 from .auth import extract_authorization_code, extract_request_verification_token
+from .diagnostics import AuthDiagnosticsTrace
 from .exceptions import ApiResponseError, CannotConnectError, InvalidAuthError, KretaApiError
 from .models import AnnouncedTest, MergedCalendarEvent, StudentProfile
 from .storage import TokenStore
@@ -92,6 +94,10 @@ class KretaApiClient:
         self._session = session
         self._klik_id = klik_id
         self._user_id = user_id
+        # Password is kept for the lifetime of the client: if the refresh token
+        # is ever rejected, the full login flow falls back to credential-based
+        # auth and needs it again.  This mirrors HA's own config-entry storage
+        # where the credential is already persisted on disk.
         self._password = password
         self._token_store = token_store
         self._access_token: str | None = None
@@ -172,8 +178,13 @@ class KretaApiClient:
             lesson_type = item.get("Tipus", {}).get("Nev")
             if lesson_type not in {"TanitasiOra", "OrarendiOra"}:
                 continue
-            start = self._parse_datetime(item["KezdetIdopont"])
-            end = self._parse_datetime(item["VegIdopont"])
+            start_raw = item.get("KezdetIdopont")
+            end_raw = item.get("VegIdopont")
+            if start_raw is None or end_raw is None:
+                _LOGGER.warning("Skipping lesson item with missing time fields: %s", item)
+                continue
+            start = self._parse_datetime(start_raw)
+            end = self._parse_datetime(end_raw)
             subject = item.get("Nev") or item.get("Tantargy", {}).get("Nev") or "Ora"
             room = item.get("TeremNeve")
             lesson_index = item.get("Oraszam")
@@ -222,10 +233,14 @@ class KretaApiClient:
                 },
             )
             for item in payload:
+                datum = item.get("Datum")
+                if datum is None:
+                    _LOGGER.warning("Skipping announced test item with missing Datum field: %s", item)
+                    continue
                 announced_date = item.get("BejelentesDatuma")
                 tests.append(
                     AnnouncedTest(
-                        test_date=self._parse_local_date(item["Datum"]),
+                        test_date=self._parse_local_date(datum),
                         announced_date=(
                             self._parse_local_date(announced_date)
                             if announced_date
@@ -319,31 +334,69 @@ class KretaApiClient:
 
     async def _async_exchange_refresh_token(self, refresh_token: str) -> None:
         """Refresh the access token from a stored refresh token."""
+        trace = AuthDiagnosticsTrace()
+        request_data = {
+            "refresh_token": refresh_token,
+            "institute_code": self._klik_id,
+            "client_id": CLIENT_ID,
+            "grant_type": "refresh_token",
+        }
         try:
             response = await self._session.post(
                 TOKEN_URL,
-                data={
-                    "refresh_token": refresh_token,
-                    "institute_code": self._klik_id,
-                    "client_id": CLIENT_ID,
-                    "grant_type": "refresh_token",
-                },
+                data=request_data,
                 timeout=DEFAULT_TIMEOUT_SECONDS,
             )
         except ClientError as err:
+            trace.record_exchange(
+                label="POST token (refresh)",
+                method="POST",
+                url=TOKEN_URL,
+                request_data=request_data,
+                network_error=str(err),
+            )
+            trace.log_failure(_LOGGER, self._klik_id)
             raise CannotConnectError("Could not refresh the Kreta access token") from err
 
         if response.status in {400, 401, 403}:
+            body = await response.text()
+            trace.record_exchange(
+                label="POST token (refresh)",
+                method="POST",
+                url=TOKEN_URL,
+                request_data=request_data,
+                response_status=response.status,
+                response_body=body,
+            )
+            trace.log_failure(_LOGGER, self._klik_id)
             raise InvalidAuthError("Stored refresh token is no longer valid")
         if response.status >= 400:
             body = await response.text()
             _LOGGER.debug("Full error response body for token exchange: %s", body)
+            trace.record_exchange(
+                label="POST token (refresh)",
+                method="POST",
+                url=TOKEN_URL,
+                request_data=request_data,
+                response_status=response.status,
+                response_body=body,
+            )
+            trace.log_failure(_LOGGER, self._klik_id)
             raise KretaApiError(
                 f"Refresh-token exchange failed ({response.status}): {_summarize_error_body(body)}"
             )
 
         payload = await response.json()
         if "access_token" not in payload:
+            trace.record_exchange(
+                label="POST token (refresh) — unexpected payload",
+                method="POST",
+                url=TOKEN_URL,
+                request_data=request_data,
+                response_status=response.status,
+                response_body=json.dumps(payload),
+            )
+            trace.log_failure(_LOGGER, self._klik_id)
             raise InvalidAuthError("Refresh-token exchange did not return an access token")
         self._access_token = payload["access_token"]
         new_refresh = payload.get("refresh_token")
@@ -352,11 +405,38 @@ class KretaApiClient:
 
     async def _async_login(self) -> None:
         """Perform the interactive login flow to obtain a new refresh token."""
+        trace = AuthDiagnosticsTrace()
+        login_request_data: dict[str, Any] = {
+            "ReturnUrl": LOGIN_RETURN_URL,
+            "IsTemporaryLogin": False,
+            "UserName": self._user_id,
+            "Password": self._password,
+            "InstituteCode": self._klik_id,
+            "loginType": "InstituteLogin",
+        }
         try:
+            # Step 1: GET the authorize/login page to obtain the CSRF token.
             login_page = await self._session.get(AUTHORIZE_URL, timeout=DEFAULT_TIMEOUT_SECONDS)
-            login_page.raise_for_status()
-            verification_token = extract_request_verification_token(await login_page.text())
+            html = await login_page.text()
+            trace.record_exchange(
+                label="GET authorize page",
+                method="GET",
+                url=AUTHORIZE_URL,
+                response_status=login_page.status,
+                response_body=html if login_page.status >= 400 else None,
+            )
+            if login_page.status >= 400:
+                trace.log_failure(_LOGGER, self._klik_id)
+                raise InvalidAuthError(
+                    f"Login authorize page returned {login_page.status}"
+                )
+            verification_token = extract_request_verification_token(html)
 
+            # Step 2: POST the login form with credentials.
+            full_login_data = {
+                **login_request_data,
+                "__RequestVerificationToken": verification_token,
+            }
             response = await self._session.post(
                 LOGIN_URL,
                 headers={
@@ -367,56 +447,124 @@ class KretaApiClient:
                     ),
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
-                data={
-                    "ReturnUrl": LOGIN_RETURN_URL,
-                    "IsTemporaryLogin": False,
-                    "UserName": self._user_id,
-                    "Password": self._password,
-                    "InstituteCode": self._klik_id,
-                    "loginType": "InstituteLogin",
-                    "__RequestVerificationToken": verification_token,
-                },
+                data=full_login_data,
                 allow_redirects=False,
                 timeout=DEFAULT_TIMEOUT_SECONDS,
             )
             if response.status >= 400:
-                raise InvalidAuthError(f"Login form submission failed with {response.status}")
+                login_body = await response.text()
+                trace.record_exchange(
+                    label="POST login form",
+                    method="POST",
+                    url=LOGIN_URL,
+                    request_data=full_login_data,
+                    response_status=response.status,
+                    response_body=login_body,
+                )
+                trace.log_failure(_LOGGER, self._klik_id)
+                raise InvalidAuthError(
+                    f"Login form submission failed with {response.status}"
+                )
+            trace.record_exchange(
+                label="POST login form",
+                method="POST",
+                url=LOGIN_URL,
+                request_data=full_login_data,
+                response_status=response.status,
+            )
 
+            # Step 3: Follow the callback redirect to obtain the auth code.
             callback = await self._session.get(
                 CALLBACK_URL,
                 allow_redirects=False,
                 timeout=DEFAULT_TIMEOUT_SECONDS,
             )
+            location = callback.headers.get("location")
             if callback.status not in {302, 303}:
+                callback_body = await callback.text()
+                trace.record_exchange(
+                    label="GET callback",
+                    method="GET",
+                    url=CALLBACK_URL,
+                    response_status=callback.status,
+                    response_body=callback_body,
+                )
+                trace.log_failure(_LOGGER, self._klik_id)
                 raise InvalidAuthError(
                     f"Authorization callback did not redirect, got {callback.status}"
                 )
-
-            location = callback.headers.get("location")
+            trace.record_exchange(
+                label="GET callback",
+                method="GET",
+                url=CALLBACK_URL,
+                response_status=callback.status,
+                redirect_location=location,
+            )
             if location is None:
-                raise InvalidAuthError("Authorization callback did not return a redirect URL")
+                trace.log_failure(_LOGGER, self._klik_id)
+                raise InvalidAuthError(
+                    "Authorization callback did not return a redirect URL"
+                )
 
             code = extract_authorization_code(location)
+
+            # Step 4: Exchange the auth code for tokens.
+            token_request_data: dict[str, Any] = {
+                "code": code,
+                "code_verifier": CODE_VERIFIER,
+                "redirect_uri": (
+                    "https://mobil.e-kreta.hu/ellenorzo-student/prod/oauthredirect"
+                ),
+                "client_id": CLIENT_ID,
+                "grant_type": "authorization_code",
+            }
             token_response = await self._session.post(
                 TOKEN_URL,
-                data={
-                    "code": code,
-                    "code_verifier": CODE_VERIFIER,
-                    "redirect_uri": "https://mobil.e-kreta.hu/ellenorzo-student/prod/oauthredirect",
-                    "client_id": CLIENT_ID,
-                    "grant_type": "authorization_code",
-                },
+                data=token_request_data,
                 timeout=DEFAULT_TIMEOUT_SECONDS,
             )
             if token_response.status >= 400:
+                token_body = await token_response.text()
+                trace.record_exchange(
+                    label="POST token (auth code)",
+                    method="POST",
+                    url=TOKEN_URL,
+                    request_data=token_request_data,
+                    response_status=token_response.status,
+                    response_body=token_body,
+                )
+                trace.log_failure(_LOGGER, self._klik_id)
                 raise InvalidAuthError(
                     f"Authorization-code exchange failed with {token_response.status}"
                 )
+            trace.record_exchange(
+                label="POST token (auth code)",
+                method="POST",
+                url=TOKEN_URL,
+                request_data=token_request_data,
+                response_status=token_response.status,
+            )
         except ClientError as err:
+            trace.record_exchange(
+                label="Network error",
+                method="?",
+                url="?",
+                network_error=str(err),
+            )
+            trace.log_failure(_LOGGER, self._klik_id)
             raise CannotConnectError("Could not complete Kreta login flow") from err
 
         payload = await token_response.json()
         if "access_token" not in payload:
+            trace.record_exchange(
+                label="POST token (auth code) — unexpected payload",
+                method="POST",
+                url=TOKEN_URL,
+                request_data=token_request_data,
+                response_status=token_response.status,
+                response_body=json.dumps(payload),
+            )
+            trace.log_failure(_LOGGER, self._klik_id)
             raise InvalidAuthError("Login response did not include an access token")
         self._access_token = payload["access_token"]
         new_refresh = payload.get("refresh_token")
