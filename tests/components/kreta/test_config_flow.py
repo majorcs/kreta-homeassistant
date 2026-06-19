@@ -150,6 +150,9 @@ async def test_reauth_flow_updates_password(hass: HomeAssistant) -> None:
     with patch(
         "custom_components.kreta.config_flow.async_validate_input",
         AsyncMock(return_value={"title": "Student One (school01)", "student_name": "Student One"}),
+    ), patch(
+        "custom_components.kreta.async_setup_entry",
+        AsyncMock(return_value=True),
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -224,6 +227,9 @@ async def test_reconfigure_flow_updates_credentials(hass: HomeAssistant) -> None
     with patch(
         "custom_components.kreta.config_flow.async_validate_input",
         AsyncMock(return_value={"title": "Student One (school01)", "student_name": "Student One"}),
+    ), patch(
+        "custom_components.kreta.async_setup_entry",
+        AsyncMock(return_value=True),
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
