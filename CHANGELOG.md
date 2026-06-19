@@ -2,7 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
-## 2026.04.28.1
+## 2026.06.19.1
+
+### Added
+
+- **Password and credential change via the Home Assistant Web UI.**
+  Two standard HA flows are now available from the **⋮** menu on the integration card:
+  - *Re-authenticate* (`async_step_reauth`) — shows a password-only form pre-labelled
+    with the existing username and school ID. Triggered automatically when the stored
+    credentials are rejected by Kréta and a "Re-authentication required" banner appears,
+    or manually at any time.
+  - *Reconfigure* (`async_step_reconfigure`) — shows the full credentials form (KLIK ID,
+    User ID, Password) pre-filled with the current values, for when any credential must
+    change. Both flows validate the new credentials against the Kréta API before saving,
+    then reload the integration.
+
+### Fixed
+
+- **Stale refresh token is now evicted from storage when the IDP explicitly rejects it.**
+  Previously, if Kréta's IDP returned HTTP 400 `invalid_grant` for a stored refresh token,
+  the token was left in persistent storage. On the next HA restart the integration would
+  attempt the same rejected token again, log another warning, and fall back to a full login
+  each time. The token is now deleted from the `KretaTokenStore` as soon as it is rejected,
+  so the next startup proceeds directly to a clean full login without the superfluous
+  refresh attempt.
+
+
 
 ### Fixed
 

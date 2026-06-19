@@ -121,3 +121,159 @@ async def test_options_flow_updates_values(hass: HomeAssistant) -> None:
 
     assert result2["type"] is FlowResultType.CREATE_ENTRY
     assert result2["data"] == {CONF_REFRESH_HOURS: 6, CONF_LOOKAHEAD_WEEKS: 4}
+
+
+async def test_reauth_flow_updates_password(hass: HomeAssistant) -> None:
+    """Reauth flow should update the password in the config entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Student One (school01)",
+        unique_id="school01:student01",
+        data={
+            CONF_KLIK_ID: "school01",
+            CONF_USER_ID: "student01",
+            CONF_PASSWORD: "old_secret",
+            CONF_REFRESH_HOURS: 12,
+            CONF_LOOKAHEAD_WEEKS: 2,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+
+    with patch(
+        "custom_components.kreta.config_flow.async_validate_input",
+        AsyncMock(return_value={"title": "Student One (school01)", "student_name": "Student One"}),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_PASSWORD: "new_secret"},
+        )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reauth_successful"
+    assert entry.data[CONF_PASSWORD] == "new_secret"
+
+
+async def test_reauth_flow_invalid_auth(hass: HomeAssistant) -> None:
+    """Reauth flow should show an error when the new password is wrong."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Student One (school01)",
+        unique_id="school01:student01",
+        data={
+            CONF_KLIK_ID: "school01",
+            CONF_USER_ID: "student01",
+            CONF_PASSWORD: "old_secret",
+            CONF_REFRESH_HOURS: 12,
+            CONF_LOOKAHEAD_WEEKS: 2,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+
+    with patch(
+        "custom_components.kreta.config_flow.async_validate_input",
+        AsyncMock(side_effect=InvalidAuthError),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_PASSWORD: "wrong_password"},
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "reauth_confirm"
+    assert result2["errors"]["base"] == "invalid_auth"
+    assert entry.data[CONF_PASSWORD] == "old_secret"
+
+
+async def test_reconfigure_flow_updates_credentials(hass: HomeAssistant) -> None:
+    """Reconfigure flow should update credentials in the config entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Student One (school01)",
+        unique_id="school01:student01",
+        data={
+            CONF_KLIK_ID: "school01",
+            CONF_USER_ID: "student01",
+            CONF_PASSWORD: "old_secret",
+            CONF_REFRESH_HOURS: 12,
+            CONF_LOOKAHEAD_WEEKS: 2,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    with patch(
+        "custom_components.kreta.config_flow.async_validate_input",
+        AsyncMock(return_value={"title": "Student One (school01)", "student_name": "Student One"}),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_KLIK_ID: "school01",
+                CONF_USER_ID: "student01",
+                CONF_PASSWORD: "new_secret",
+            },
+        )
+
+    assert result2["type"] is FlowResultType.ABORT
+    assert result2["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PASSWORD] == "new_secret"
+
+
+async def test_reconfigure_flow_invalid_auth(hass: HomeAssistant) -> None:
+    """Reconfigure flow should show an error when credentials are invalid."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Student One (school01)",
+        unique_id="school01:student01",
+        data={
+            CONF_KLIK_ID: "school01",
+            CONF_USER_ID: "student01",
+            CONF_PASSWORD: "old_secret",
+            CONF_REFRESH_HOURS: 12,
+            CONF_LOOKAHEAD_WEEKS: 2,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+
+    with patch(
+        "custom_components.kreta.config_flow.async_validate_input",
+        AsyncMock(side_effect=InvalidAuthError),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_KLIK_ID: "school01",
+                CONF_USER_ID: "student01",
+                CONF_PASSWORD: "wrong_password",
+            },
+        )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "reconfigure"
+    assert result2["errors"]["base"] == "invalid_auth"
+    assert entry.data[CONF_PASSWORD] == "old_secret"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -47,6 +48,22 @@ def _build_user_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
                 vol.Coerce(int),
                 vol.Range(min=MIN_LOOKAHEAD_WEEKS, max=MAX_LOOKAHEAD_WEEKS),
             ),
+        }
+    )
+
+
+def _build_reauth_schema() -> vol.Schema:
+    """Build the re-authentication schema (password only)."""
+    return vol.Schema({vol.Required(CONF_PASSWORD): str})
+
+
+def _build_reconfigure_schema(data: dict[str, Any]) -> vol.Schema:
+    """Build the reconfigure schema (credentials only, pre-filled)."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_KLIK_ID, default=data.get(CONF_KLIK_ID, "")): str,
+            vol.Required(CONF_USER_ID, default=data.get(CONF_USER_ID, "")): str,
+            vol.Required(CONF_PASSWORD): str,
         }
     )
 
@@ -125,6 +142,75 @@ class KretaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=_build_user_schema(user_input),
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]  # noqa: ARG002
+    ) -> config_entries.ConfigFlowResult:
+        """Initiate re-authentication after a credential failure."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle the re-authentication form (password only)."""
+        reauth_entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            new_data = {**reauth_entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]}
+            try:
+                await async_validate_input(self.hass, new_data)
+            except InvalidAuthError:
+                errors["base"] = "invalid_auth"
+            except CannotConnectError:
+                errors["base"] = "cannot_connect"
+            except KretaApiError:
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(reauth_entry, data=new_data)
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=_build_reauth_schema(),
+            description_placeholders={
+                CONF_USER_ID: reauth_entry.data[CONF_USER_ID],
+                CONF_KLIK_ID: reauth_entry.data[CONF_KLIK_ID],
+            },
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle manual reconfiguration of credentials."""
+        reconfigure_entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            new_data = {
+                **reconfigure_entry.data,
+                CONF_KLIK_ID: user_input[CONF_KLIK_ID].strip(),
+                CONF_USER_ID: user_input[CONF_USER_ID].strip(),
+                CONF_PASSWORD: user_input[CONF_PASSWORD],
+            }
+            try:
+                await async_validate_input(self.hass, new_data)
+            except InvalidAuthError:
+                errors["base"] = "invalid_auth"
+            except CannotConnectError:
+                errors["base"] = "cannot_connect"
+            except KretaApiError:
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(reconfigure_entry, data=new_data)
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_build_reconfigure_schema(
+                user_input if user_input is not None else dict(reconfigure_entry.data)
+            ),
             errors=errors,
         )
 
