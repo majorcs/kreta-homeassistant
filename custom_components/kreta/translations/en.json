@@ -12,6 +12,22 @@
           "refresh_hours": "Refresh interval (hours)",
           "lookahead_weeks": "Calendar lookahead (weeks)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Kreta",
+        "description": "Enter the new password for {user_id} ({klik_id}).",
+        "data": {
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Kreta",
+        "description": "Update the credentials for this Kreta account.",
+        "data": {
+          "klik_id": "KLIK ID",
+          "user_id": "User ID",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -20,7 +36,9 @@
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This pupil account is already configured."
+      "already_configured": "This pupil account is already configured.",
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Reconfiguration was successful."
     }
   },
   "options": {

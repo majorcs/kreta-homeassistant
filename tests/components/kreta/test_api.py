@@ -390,6 +390,8 @@ async def test_async_exchange_refresh_token_success_and_invalid() -> None:
     client._session.post = AsyncMock(return_value=FakeResponse(status=400))
     with pytest.raises(InvalidAuthError):
         await client._async_exchange_refresh_token("refresh-token")
+    # Rejected token must be cleared from storage so it is not retried next cycle.
+    assert await client._token_store.async_get_refresh_token() is None
 
     client._session.post = AsyncMock(
         return_value=FakeResponse(status=500, text_data="server error")
@@ -425,7 +427,56 @@ async def test_async_exchange_refresh_token_raises_on_transport_error() -> None:
         await client._async_exchange_refresh_token("refresh-token")
 
 
-async def test_async_login_success() -> None:
+async def test_async_exchange_refresh_token_clears_stored_token_when_rejected() -> None:
+    """An explicitly rejected refresh token (400/401/403) must be removed from storage."""
+    for status in (400, 401, 403):
+        client = _client()
+        await client._token_store.async_set_refresh_token("stale-refresh")
+        client._session.post = AsyncMock(return_value=FakeResponse(status=status))
+
+        with pytest.raises(InvalidAuthError):
+            await client._async_exchange_refresh_token("stale-refresh")
+
+        assert await client._token_store.async_get_refresh_token() is None, (
+            f"Expected store to be cleared after HTTP {status} rejection"
+        )
+
+
+async def test_async_exchange_refresh_token_does_not_clear_stored_token_on_unexpected_payload() -> None:
+    """A successful HTTP exchange that lacks an access_token should NOT clear the stored token."""
+    client = _client()
+    await client._token_store.async_set_refresh_token("existing-refresh")
+    client._session.post = AsyncMock(return_value=FakeResponse(status=200, json_data={}))
+
+    with pytest.raises(InvalidAuthError):
+        await client._async_exchange_refresh_token("existing-refresh")
+
+    assert await client._token_store.async_get_refresh_token() == "existing-refresh"
+
+
+async def test_async_authenticate_stale_token_cleared_and_not_retried() -> None:
+    """After a refresh rejection + full login without a new token, store must be empty.
+
+    This guards against the stale-token retry loop: if the server rejects a stored
+    refresh token and the fallback full login returns no new refresh token, the invalid
+    token must be gone so the next auth cycle goes straight to full login rather than
+    retrying the rejected token.
+    """
+    client = _client()
+    await client._token_store.async_set_refresh_token("invalid-refresh")
+
+    # Real _async_exchange_refresh_token runs: server returns 400 → clears the stored token.
+    client._session.post = AsyncMock(return_value=FakeResponse(status=400))
+    # Full login succeeds but provides no new refresh token (mock does not touch the store).
+    client._async_login = AsyncMock()
+
+    await client.async_authenticate()
+
+    # The storage must be empty; the stale token must not linger.
+    assert await client._token_store.async_get_refresh_token() is None
+
+
+
     """The interactive login flow should store new tokens."""
     client = _client()
     client._session.get = AsyncMock(
@@ -485,10 +536,9 @@ async def test_async_login_preserves_stored_token_and_warns_when_no_refresh_toke
     assert client._access_token == "access"
     assert await client._token_store.async_get_refresh_token() == "existing-refresh"
     mock_logger.warning.assert_any_call(
-        "Full login for %s did not return a refresh token; "
-        "stored token (if any) is preserved",
-        client._klik_id,
-    )
+            "Full login for %s did not return a refresh token",
+            client._klik_id,
+        )
 
 
 async def test_async_login_requires_redirect_location() -> None:

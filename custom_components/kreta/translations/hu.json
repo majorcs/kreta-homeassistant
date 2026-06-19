@@ -12,6 +12,22 @@
           "refresh_hours": "Frissitesi idokoz (ora)",
           "lookahead_weeks": "Naptari eloretekintes (het)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Kreta ujrahitelesitese",
+        "description": "Add meg az uj jelszot ehhez a fiokhoz: {user_id} ({klik_id}).",
+        "data": {
+          "password": "Jelszo"
+        }
+      },
+      "reconfigure": {
+        "title": "Kreta ujrabeallitasa",
+        "description": "Frissitsd a Kreta fiok belepesi adatait.",
+        "data": {
+          "klik_id": "KLIK azonosito",
+          "user_id": "Felhasznaloi azonosito",
+          "password": "Jelszo"
+        }
       }
     },
     "error": {
@@ -20,7 +36,9 @@
       "unknown": "Varatlan hiba tortent."
     },
     "abort": {
-      "already_configured": "Ez a tanuloi fiok mar be van allitva."
+      "already_configured": "Ez a tanuloi fiok mar be van allitva.",
+      "reauth_successful": "Az ujrahitelesites sikeres volt.",
+      "reconfigure_successful": "Az ujrabeallitas sikeres volt."
     }
   },
   "options": {

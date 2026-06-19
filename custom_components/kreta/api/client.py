@@ -369,6 +369,9 @@ class KretaApiClient:
                 response_body=body,
             )
             trace.log_failure(_LOGGER, self._klik_id)
+            # The server has explicitly rejected this refresh token — remove it from
+            # persistent storage so it is not retried on the next auth cycle.
+            await self._token_store.async_set_refresh_token(None)
             raise InvalidAuthError("Stored refresh token is no longer valid")
         if response.status >= 400:
             body = await response.text()
@@ -572,8 +575,7 @@ class KretaApiClient:
             await self._token_store.async_set_refresh_token(new_refresh)
         else:
             _LOGGER.warning(
-                "Full login for %s did not return a refresh token; "
-                "stored token (if any) is preserved",
+                "Full login for %s did not return a refresh token",
                 self._klik_id,
             )
 
