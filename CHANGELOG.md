@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.09.16.2
+
+### Added
+
+- **Grades.** New `Grades JSON` sensor (disabled by default) exposing recorded
+  grades for the current lookahead window plus an equal trailing window into
+  the past, and an enabled `New Grades` count sensor.
+- **Homework.** New `Homework JSON` sensor (disabled by default) exposing
+  homework due within the current lookahead window, and an enabled
+  `Upcoming Homework` count sensor.
+- **School-year calendar.** New `School Year Calendar JSON` sensor (disabled
+  by default) exposing the whole school-year calendar, and an enabled
+  `Next School Year Event` sensor reporting the next upcoming entry's date
+  and description.
+- **Student profile.** The pupil profile (exposed via the existing
+  `Timetable JSON` sensor's attributes) now includes an education ID and
+  class-group field, when the e-Kréta API provides them.
+
+### Known limitations
+
+- The education ID and class-group field names, and the full set of
+  school-year calendar day-types (e.g. holiday periods), are mapped using
+  best-effort field-name guesses pending a live payload check — see
+  `scripts/inspect_raw_payloads.py`. If they turn out to be `None` for you,
+  the underlying `.get(...)` keys in `api/client.py` need correcting against
+  a real payload sample.
+
 ## 2026.09.16.1
 
 ### Added
