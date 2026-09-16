@@ -39,7 +39,6 @@ from custom_components.kreta.const import (
     ATTR_LAST_ERROR,
     ATTR_LAST_ERROR_TIME,
     ATTR_LAST_SUCCESS,
-    ATTR_PROFILE,
     ATTR_SCHOOL_YEAR_JSON,
     CONF_KLIK_ID,
     CONF_LOOKAHEAD_WEEKS,
@@ -55,6 +54,7 @@ from custom_components.kreta.sensor import (
     KretaLastRefreshSensor,
     KretaNewGradesSensor,
     KretaNextSchoolEventSensor,
+    KretaProfileSensor,
     KretaSchoolYearJsonSensor,
     KretaUpcomingHomeworkSensor,
     KretaUpdateStatusSensor,
@@ -319,8 +319,8 @@ async def test_sensor_entity_exposes_json_attributes() -> None:
     entity = KretaJsonSensor(entry, runtime)
 
     assert entity.native_value == runtime.coordinator.data.last_success.isoformat()
-    assert entity.extra_state_attributes[ATTR_PROFILE]["student_name"] == "Student One"
     assert entity.extra_state_attributes[ATTR_EVENTS_JSON] == '{"events":2}'
+    assert "profile" not in entity.extra_state_attributes
     assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
 
 
@@ -484,8 +484,8 @@ async def test_button_setup_adds_entity(hass) -> None:
     assert isinstance(added[0], KretaRefreshButton)
 
 
-async def test_sensor_setup_adds_ten_entities(hass) -> None:
-    """Sensor setup should register all ten sensor entities."""
+async def test_sensor_setup_adds_eleven_entities(hass) -> None:
+    """Sensor setup should register all eleven sensor entities."""
     now = datetime.now(TZ)
     entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
     runtime = _runtime(entry, [_event(now, "Matematika")])
@@ -494,7 +494,7 @@ async def test_sensor_setup_adds_ten_entities(hass) -> None:
 
     await async_setup_sensor_entry(hass, entry, added.extend)
 
-    assert len(added) == 10
+    assert len(added) == 11
     entity_types = {type(e) for e in added}
     assert KretaJsonSensor in entity_types
     assert KretaCompactJsonSensor in entity_types
@@ -506,6 +506,7 @@ async def test_sensor_setup_adds_ten_entities(hass) -> None:
     assert KretaUpcomingHomeworkSensor in entity_types
     assert KretaSchoolYearJsonSensor in entity_types
     assert KretaNextSchoolEventSensor in entity_types
+    assert KretaProfileSensor in entity_types
 
 
 async def test_compact_json_sensor_exposes_days_attribute() -> None:
@@ -550,7 +551,16 @@ def test_json_sensor_unrecorded_attributes_excludes_large_attrs() -> None:
     """
     assert ATTR_EVENTS_JSON in KretaJsonSensor._unrecorded_attributes
     assert ATTR_EVENTS in KretaJsonSensor._unrecorded_attributes
-    assert ATTR_PROFILE in KretaJsonSensor._unrecorded_attributes
+
+
+def test_profile_sensor_unrecorded_attributes_excludes_sensitive_fields() -> None:
+    """KretaProfileSensor._unrecorded_attributes must exclude sensitive identity fields.
+
+    The Profile sensor is enabled by default, so these fields must stay out of
+    the recorder/history database while remaining available at runtime.
+    """
+    for field in ("mother_name", "birth_date", "birth_place", "phone_number", "email"):
+        assert field in KretaProfileSensor._unrecorded_attributes
 
 
 async def test_grades_json_sensor_exposes_payload_and_count() -> None:
@@ -698,6 +708,34 @@ async def test_next_school_event_sensor_handles_missing_data() -> None:
     entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
     runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
     entity = KretaNextSchoolEventSensor(entry, runtime)
+
+    assert entity.native_value is None
+    assert entity.extra_state_attributes == {}
+
+
+async def test_profile_sensor_reports_name_and_attributes() -> None:
+    """Profile sensor should report the student's name and the rest as attributes."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaProfileSensor(entry, runtime)
+
+    assert entity.native_value == "Student One"
+    attrs = entity.extra_state_attributes
+    assert "student_name" not in attrs
+    assert attrs["school_name"] == "School"
+    assert attrs["education_id"] is None
+    assert attrs["class_name"] is None
+    assert attrs["class_master_name"] is None
+    assert entity.entity_registry_enabled_default is True
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_profile_sensor_handles_missing_data() -> None:
+    """Profile sensor should return None state and empty attrs when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaProfileSensor(entry, runtime)
 
     assert entity.native_value is None
     assert entity.extra_state_attributes == {}
