@@ -23,6 +23,7 @@ class StudentProfile:
     birth_date: str | None
     education_id: str | None = None
     class_name: str | None = None
+    class_master_name: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable mapping."""

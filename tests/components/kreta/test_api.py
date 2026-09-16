@@ -193,16 +193,19 @@ async def test_async_get_student_profile() -> None:
     """Student profiles should be normalized from Kreta payloads."""
     client = _client()
     client._async_get_json = AsyncMock(
-        return_value={
-            "Nev": "Student One",
-            "SzuletesiNev": "Birth Name",
-            "SzuletesiHely": "Budapest",
-            "AnyjaNeve": "Parent",
-            "Telefonszam": "123",
-            "EmailCim": "student@example.com",
-            "SzuletesiDatum": "2010-09-01T00:00:00Z",
-            "Intezmeny": {"TeljesNev": "School"},
-        }
+        side_effect=[
+            {
+                "Nev": "Student One",
+                "SzuletesiNev": "Birth Name",
+                "SzuletesiHely": "Budapest",
+                "AnyjaNeve": "Parent",
+                "Telefonszam": "123",
+                "EmailCim": "student@example.com",
+                "SzuletesiDatum": "2010-09-01T00:00:00Z",
+                "Intezmeny": {"TeljesNev": "School"},
+            },
+            {},
+        ]
     )
 
     profile = await client.async_get_student_profile()
@@ -219,15 +222,103 @@ async def test_async_get_student_profile() -> None:
     )
 
 
-async def test_async_get_student_profile_education_id_and_class_name_unset() -> None:
-    """Education ID and class name are not present in Sajat/TanuloAdatlap (confirmed live)."""
+async def test_async_get_student_profile_maps_education_id_and_class() -> None:
+    """Education ID and current class should be mapped from TovabbiAdatok."""
     client = _client()
-    client._async_get_json = AsyncMock(return_value={"Nev": "Student One"})
+    client._async_get_json = AsyncMock(
+        side_effect=[
+            {"Nev": "Student One"},
+            {
+                "OktatasiAzonosito": "73378266005",
+                "Jogviszonyok": [
+                    {
+                        "OsztalyNev": "6. g",
+                        "OsztalyfonokNev": "Büki János",
+                        "Kezdete": "2025-09-01",
+                    }
+                ],
+            },
+        ]
+    )
 
     profile = await client.async_get_student_profile()
 
+    assert profile.education_id == "73378266005"
+    assert profile.class_name == "6. g"
+    assert profile.class_master_name == "Büki János"
+
+
+async def test_async_get_student_profile_picks_latest_enrollment() -> None:
+    """With multiple enrollments, the one with the latest start date should win."""
+    client = _client()
+    client._async_get_json = AsyncMock(
+        side_effect=[
+            {"Nev": "Student One"},
+            {
+                "OktatasiAzonosito": "73378266005",
+                "Jogviszonyok": [
+                    {
+                        "OsztalyNev": "5. g",
+                        "OsztalyfonokNev": "Old Teacher",
+                        "Kezdete": "2024-09-01",
+                    },
+                    {
+                        "OsztalyNev": "6. g",
+                        "OsztalyfonokNev": "New Teacher",
+                        "Kezdete": "2025-09-01",
+                    },
+                ],
+            },
+        ]
+    )
+
+    profile = await client.async_get_student_profile()
+
+    assert profile.class_name == "6. g"
+    assert profile.class_master_name == "New Teacher"
+
+
+async def test_async_get_student_profile_falls_back_when_no_enrollment_dates_parse() -> None:
+    """With no parseable Kezdete on any enrollment, the first one should be used."""
+    client = _client()
+    client._async_get_json = AsyncMock(
+        side_effect=[
+            {"Nev": "Student One"},
+            {
+                "OktatasiAzonosito": "73378266005",
+                "Jogviszonyok": [
+                    {"OsztalyNev": "6. g", "OsztalyfonokNev": "First Teacher"},
+                    {
+                        "OsztalyNev": "7. g",
+                        "OsztalyfonokNev": "Second Teacher",
+                        "Kezdete": "not-a-date",
+                    },
+                ],
+            },
+        ]
+    )
+
+    profile = await client.async_get_student_profile()
+
+    assert profile.class_name == "6. g"
+    assert profile.class_master_name == "First Teacher"
+
+
+async def test_async_get_student_profile_degrades_when_extra_data_fails() -> None:
+    """A failing TovabbiAdatok call must not break the overall profile fetch."""
+    client = _client()
+    client._async_get_json = AsyncMock(
+        side_effect=[{"Nev": "Student One"}, KretaApiError("boom")]
+    )
+
+    with patch("custom_components.kreta.api.client._LOGGER") as mock_logger:
+        profile = await client.async_get_student_profile()
+
+    assert profile.student_name == "Student One"
     assert profile.education_id is None
     assert profile.class_name is None
+    assert profile.class_master_name is None
+    mock_logger.warning.assert_called_once()
 
 
 async def test_async_get_grades_filters_and_sorts() -> None:
