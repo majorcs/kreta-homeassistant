@@ -19,7 +19,13 @@ from custom_components.kreta.api.exceptions import (
     InvalidAuthError,
     KretaApiError,
 )
-from custom_components.kreta.api.models import MergedCalendarEvent, StudentProfile
+from custom_components.kreta.api.models import (
+    Grade,
+    HomeworkItem,
+    MergedCalendarEvent,
+    SchoolYearMilestone,
+    StudentProfile,
+)
 from custom_components.kreta.api.storage import MemoryTokenStore
 
 
@@ -210,6 +216,94 @@ async def test_async_get_student_profile() -> None:
         email="student@example.com",
         school_name="School",
         birth_date="2010-09-01",
+    )
+
+
+async def test_async_get_student_profile_education_id_and_class_name_unset() -> None:
+    """Education ID and class name are not present in Sajat/TanuloAdatlap (confirmed live)."""
+    client = _client()
+    client._async_get_json = AsyncMock(return_value={"Nev": "Student One"})
+
+    profile = await client.async_get_student_profile()
+
+    assert profile.education_id is None
+    assert profile.class_name is None
+
+
+async def test_async_get_grades_filters_and_sorts() -> None:
+    """Grade items missing a recorded date should be skipped."""
+    client = _client()
+    client._async_get_json = AsyncMock(
+        return_value=[
+            {
+                "RogzitesDatuma": "2026-04-27T00:00:00Z",
+                "Tantargy": {"Nev": "Matematika"},
+                "Tipus": {"Leiras": "Felmeres"},
+                "SzovegesErtek": "5",
+                "Tema": "Egyenletek",
+            },
+            {"Tantargy": {"Nev": "Biologia"}},
+        ]
+    )
+
+    grades = await client.async_get_grades(date(2026, 4, 1), date(2026, 4, 30))
+
+    assert len(grades) == 1
+    assert grades[0] == Grade(
+        grade_date=date(2026, 4, 27),
+        subject_name="Matematika",
+        grade_type="Felmeres",
+        value="5",
+        topic="Egyenletek",
+    )
+
+
+async def test_async_get_homework_filters_and_sorts() -> None:
+    """Homework items missing a deadline should be skipped."""
+    client = _client()
+    client._async_get_json = AsyncMock(
+        return_value=[
+            {
+                "TantargyNeve": "Matematika",
+                "Szoveg": "Oldd meg a peldakat",
+                "HataridoDatuma": "2026-04-30T00:00:00Z",
+                "RogzitesIdopontja": "2026-04-27T00:00:00Z",
+            },
+            {"TantargyNeve": "Biologia"},
+        ]
+    )
+
+    homework = await client.async_get_homework(date(2026, 4, 27), date(2026, 4, 30))
+
+    assert len(homework) == 1
+    assert homework[0] == HomeworkItem(
+        subject_name="Matematika",
+        description="Oldd meg a peldakat",
+        due_date=date(2026, 4, 30),
+        assigned_date=date(2026, 4, 27),
+    )
+
+
+async def test_async_get_school_year_calendar_filters_and_sorts() -> None:
+    """Calendar items missing a date should be skipped."""
+    client = _client()
+    client._async_get_json = AsyncMock(
+        return_value=[
+            {
+                "Datum": "2026-06-15T00:00:00Z",
+                "Naptipus": {"Nev": "utolso_tanitasi_nap", "Leiras": "Utolso tanitasi nap"},
+            },
+            {"Naptipus": {"Leiras": "Missing date"}},
+        ]
+    )
+
+    milestones = await client.async_get_school_year_calendar()
+
+    assert len(milestones) == 1
+    assert milestones[0] == SchoolYearMilestone(
+        event_date=date(2026, 6, 15),
+        day_type="utolso_tanitasi_nap",
+        description="Utolso tanitasi nap",
     )
 
 

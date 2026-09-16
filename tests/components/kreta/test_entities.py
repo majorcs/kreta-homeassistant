@@ -11,31 +11,55 @@ from homeassistant.config_entries import ConfigEntryState
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kreta import KretaRuntimeData, async_setup, async_unload_entry
-from custom_components.kreta.api.models import AnnouncedTest, MergedCalendarEvent, StudentProfile
+from custom_components.kreta.api.models import (
+    AnnouncedTest,
+    Grade,
+    HomeworkItem,
+    MergedCalendarEvent,
+    SchoolYearMilestone,
+    StudentProfile,
+)
 from custom_components.kreta.api.storage import KretaTokenStore
 from custom_components.kreta.binary_sensor import KretaDayBinarySensor
-from custom_components.kreta.binary_sensor import async_setup_entry as async_setup_binary_sensor_entry
+from custom_components.kreta.binary_sensor import (
+    async_setup_entry as async_setup_binary_sensor_entry,
+)
 from custom_components.kreta.button import KretaRefreshButton
 from custom_components.kreta.button import async_setup_entry as async_setup_button_entry
-from custom_components.kreta.calendar import async_setup_entry as async_setup_calendar_entry
 from custom_components.kreta.calendar import KretaCalendarEntity
+from custom_components.kreta.calendar import (
+    async_setup_entry as async_setup_calendar_entry,
+)
 from custom_components.kreta.const import (
     ATTR_COMPACT_EVENTS_JSON,
     ATTR_EVENTS,
     ATTR_EVENTS_JSON,
+    ATTR_GRADES_JSON,
+    ATTR_HOMEWORK_JSON,
     ATTR_LAST_ERROR,
     ATTR_LAST_ERROR_TIME,
     ATTR_LAST_SUCCESS,
     ATTR_PROFILE,
+    ATTR_SCHOOL_YEAR_JSON,
     CONF_KLIK_ID,
     CONF_LOOKAHEAD_WEEKS,
     CONF_REFRESH_HOURS,
     CONF_USER_ID,
     DOMAIN,
 )
-from custom_components.kreta.sensor import KretaCompactJsonSensor, KretaJsonSensor, KretaLastRefreshSensor, KretaUpdateStatusSensor
+from custom_components.kreta.sensor import (
+    KretaCompactJsonSensor,
+    KretaGradesJsonSensor,
+    KretaHomeworkJsonSensor,
+    KretaJsonSensor,
+    KretaLastRefreshSensor,
+    KretaNewGradesSensor,
+    KretaNextSchoolEventSensor,
+    KretaSchoolYearJsonSensor,
+    KretaUpcomingHomeworkSensor,
+    KretaUpdateStatusSensor,
+)
 from custom_components.kreta.sensor import async_setup_entry as async_setup_sensor_entry
-
 
 TZ = ZoneInfo("Europe/Budapest")
 
@@ -52,6 +76,12 @@ class DummyCoordinatorData:
     range_end: datetime
     payload_json: str
     compact_payload_json: str
+    grades: list[Grade]
+    grades_json: str
+    homework: list[HomeworkItem]
+    homework_json: str
+    school_year_calendar: list[SchoolYearMilestone]
+    school_year_json: str
     last_success: datetime
 
 
@@ -90,6 +120,32 @@ def _event(start: datetime, summary: str, source: str = "lesson") -> MergedCalen
     )
 
 
+_SAMPLE_GRADES = [
+    Grade(
+        grade_date=date(2026, 4, 20),
+        subject_name="Matematika",
+        grade_type="Felmeres",
+        value="5",
+        topic="Egyenletek",
+    )
+]
+_SAMPLE_HOMEWORK = [
+    HomeworkItem(
+        subject_name="Matematika",
+        description="Peldak megoldasa",
+        due_date=date(2026, 4, 28),
+        assigned_date=date(2026, 4, 25),
+    )
+]
+_SAMPLE_SCHOOL_YEAR_CALENDAR = [
+    SchoolYearMilestone(
+        event_date=date(2026, 6, 15),
+        day_type="utolso_tanitasi_nap",
+        description="Utolso tanitasi nap",
+    )
+]
+
+
 def _runtime(entry: MockConfigEntry, events: list[MergedCalendarEvent]) -> KretaRuntimeData:
     del entry
     profile = StudentProfile(
@@ -112,6 +168,12 @@ def _runtime(entry: MockConfigEntry, events: list[MergedCalendarEvent]) -> Kreta
             range_end=events[-1].end,
             payload_json='{"events":2}',
             compact_payload_json='{"days":{}}',
+            grades=_SAMPLE_GRADES,
+            grades_json='{"grades":1}',
+            homework=_SAMPLE_HOMEWORK,
+            homework_json='{"homework":1}',
+            school_year_calendar=_SAMPLE_SCHOOL_YEAR_CALENDAR,
+            school_year_json='{"milestones":1}',
             last_success=events[0].start,
         )
     )
@@ -422,8 +484,8 @@ async def test_button_setup_adds_entity(hass) -> None:
     assert isinstance(added[0], KretaRefreshButton)
 
 
-async def test_sensor_setup_adds_four_entities(hass) -> None:
-    """Sensor setup should register JSON, compact JSON, last-refresh, and update-status sensors."""
+async def test_sensor_setup_adds_ten_entities(hass) -> None:
+    """Sensor setup should register all ten sensor entities."""
     now = datetime.now(TZ)
     entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
     runtime = _runtime(entry, [_event(now, "Matematika")])
@@ -432,12 +494,18 @@ async def test_sensor_setup_adds_four_entities(hass) -> None:
 
     await async_setup_sensor_entry(hass, entry, added.extend)
 
-    assert len(added) == 4
+    assert len(added) == 10
     entity_types = {type(e) for e in added}
     assert KretaJsonSensor in entity_types
     assert KretaCompactJsonSensor in entity_types
     assert KretaLastRefreshSensor in entity_types
     assert KretaUpdateStatusSensor in entity_types
+    assert KretaGradesJsonSensor in entity_types
+    assert KretaNewGradesSensor in entity_types
+    assert KretaHomeworkJsonSensor in entity_types
+    assert KretaUpcomingHomeworkSensor in entity_types
+    assert KretaSchoolYearJsonSensor in entity_types
+    assert KretaNextSchoolEventSensor in entity_types
 
 
 async def test_compact_json_sensor_exposes_days_attribute() -> None:
@@ -483,3 +551,153 @@ def test_json_sensor_unrecorded_attributes_excludes_large_attrs() -> None:
     assert ATTR_EVENTS_JSON in KretaJsonSensor._unrecorded_attributes
     assert ATTR_EVENTS in KretaJsonSensor._unrecorded_attributes
     assert ATTR_PROFILE in KretaJsonSensor._unrecorded_attributes
+
+
+async def test_grades_json_sensor_exposes_payload_and_count() -> None:
+    """Grades JSON sensor should expose the grade count and JSON payload."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaGradesJsonSensor(entry, runtime)
+
+    assert entity.native_value == 1
+    assert entity.extra_state_attributes[ATTR_GRADES_JSON] == '{"grades":1}'
+    assert entity.entity_registry_enabled_default is False
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_grades_json_sensor_handles_missing_data() -> None:
+    """Grades JSON sensor should return None state and empty attrs when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaGradesJsonSensor(entry, runtime)
+
+    assert entity.native_value is None
+    assert entity.extra_state_attributes == {}
+
+
+async def test_new_grades_sensor_reports_count() -> None:
+    """New Grades sensor should report the number of fetched grades."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaNewGradesSensor(entry, runtime)
+
+    assert entity.native_value == 1
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_new_grades_sensor_handles_missing_data() -> None:
+    """New Grades sensor should return None when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaNewGradesSensor(entry, runtime)
+
+    assert entity.native_value is None
+
+
+async def test_homework_json_sensor_exposes_payload_and_count() -> None:
+    """Homework JSON sensor should expose the homework count and JSON payload."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaHomeworkJsonSensor(entry, runtime)
+
+    assert entity.native_value == 1
+    assert entity.extra_state_attributes[ATTR_HOMEWORK_JSON] == '{"homework":1}'
+    assert entity.entity_registry_enabled_default is False
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_homework_json_sensor_handles_missing_data() -> None:
+    """Homework JSON sensor should return None state and empty attrs when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaHomeworkJsonSensor(entry, runtime)
+
+    assert entity.native_value is None
+    assert entity.extra_state_attributes == {}
+
+
+async def test_upcoming_homework_sensor_reports_count() -> None:
+    """Upcoming Homework sensor should report the number of fetched homework items."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaUpcomingHomeworkSensor(entry, runtime)
+
+    assert entity.native_value == 1
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_upcoming_homework_sensor_handles_missing_data() -> None:
+    """Upcoming Homework sensor should return None when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaUpcomingHomeworkSensor(entry, runtime)
+
+    assert entity.native_value is None
+
+
+async def test_school_year_json_sensor_exposes_payload_and_count() -> None:
+    """School Year Calendar JSON sensor should expose the entry count and JSON payload."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaSchoolYearJsonSensor(entry, runtime)
+
+    assert entity.native_value == 1
+    assert entity.extra_state_attributes[ATTR_SCHOOL_YEAR_JSON] == '{"milestones":1}'
+    assert entity.entity_registry_enabled_default is False
+    assert entity.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
+
+
+async def test_school_year_json_sensor_handles_missing_data() -> None:
+    """School Year Calendar JSON sensor should return None state and empty attrs with no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaSchoolYearJsonSensor(entry, runtime)
+
+    assert entity.native_value is None
+    assert entity.extra_state_attributes == {}
+
+
+async def test_next_school_event_sensor_reports_upcoming_milestone() -> None:
+    """Next School Year Event sensor should report the earliest future milestone."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaNextSchoolEventSensor(entry, runtime)
+
+    with patch(
+        "custom_components.kreta.sensor.dt_util.now",
+        return_value=datetime(2026, 5, 1, tzinfo=TZ),
+    ):
+        assert entity.native_value == date(2026, 6, 15)
+        assert entity.extra_state_attributes["day_type"] == "utolso_tanitasi_nap"
+        assert entity.extra_state_attributes["description"] == "Utolso tanitasi nap"
+
+
+async def test_next_school_event_sensor_returns_none_when_all_milestones_passed() -> None:
+    """Next School Year Event sensor should report nothing once all milestones are past."""
+    now = datetime.now(TZ)
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = _runtime(entry, [_event(now, "Matematika")])
+    entity = KretaNextSchoolEventSensor(entry, runtime)
+
+    with patch(
+        "custom_components.kreta.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 1, tzinfo=TZ),
+    ):
+        assert entity.native_value is None
+        assert entity.extra_state_attributes == {}
+
+
+async def test_next_school_event_sensor_handles_missing_data() -> None:
+    """Next School Year Event sensor should return None when coordinator has no data."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Student One (school01)", data={})
+    runtime = KretaRuntimeData(client=None, coordinator=DummyCoordinator(data=None))  # type: ignore[arg-type]
+    entity = KretaNextSchoolEventSensor(entry, runtime)
+
+    assert entity.native_value is None
+    assert entity.extra_state_attributes == {}

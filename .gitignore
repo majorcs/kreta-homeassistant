@@ -6,6 +6,12 @@ docs/current-state.md
 # Sensitive or throwaway reference artifacts
 reference/
 scripts/manual_test_march_23.py
+scripts/inspect_raw_payloads.py
+scripts/*.output
+*.log
+auth-issue.log
+relogin.log
+events_json.json
 
 # Python caches and local environments
 __pycache__/

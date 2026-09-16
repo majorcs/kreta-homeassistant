@@ -11,9 +11,18 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.kreta.api.exceptions import CannotConnectError, InvalidAuthError, KretaApiError
-from custom_components.kreta.api.models import AnnouncedTest, MergedCalendarEvent
-from custom_components.kreta.coordinator import KretaDataUpdateCoordinator, merge_lessons_and_tests
+from custom_components.kreta.api.exceptions import (
+    CannotConnectError,
+    InvalidAuthError,
+    KretaApiError,
+)
+from custom_components.kreta.api.models import (
+    AnnouncedTest,
+    Grade,
+    HomeworkItem,
+    MergedCalendarEvent,
+    SchoolYearMilestone,
+)
 from custom_components.kreta.const import (
     CONF_KLIK_ID,
     CONF_LOOKAHEAD_WEEKS,
@@ -21,7 +30,10 @@ from custom_components.kreta.const import (
     CONF_USER_ID,
     DOMAIN,
 )
-
+from custom_components.kreta.coordinator import (
+    KretaDataUpdateCoordinator,
+    merge_lessons_and_tests,
+)
 
 TZ = ZoneInfo("Europe/Budapest")
 
@@ -154,6 +166,36 @@ async def test_coordinator_update_data_success(hass) -> None:
     )
     client.async_get_lessons = AsyncMock(return_value=[_lesson("math-1", "Matematika", datetime(2026, 4, 27, 8, 0, tzinfo=TZ), datetime(2026, 4, 27, 8, 45, tzinfo=TZ), 1)])
     client.async_get_announced_tests = AsyncMock(return_value=[])
+    client.async_get_homework = AsyncMock(
+        return_value=[
+            HomeworkItem(
+                subject_name="Matematika",
+                description="Peldak megoldasa",
+                due_date=date(2026, 4, 28),
+                assigned_date=date(2026, 4, 25),
+            )
+        ]
+    )
+    client.async_get_grades = AsyncMock(
+        return_value=[
+            Grade(
+                grade_date=date(2026, 4, 20),
+                subject_name="Matematika",
+                grade_type="Felmeres",
+                value="5",
+                topic="Egyenletek",
+            )
+        ]
+    )
+    client.async_get_school_year_calendar = AsyncMock(
+        return_value=[
+            SchoolYearMilestone(
+                event_date=date(2026, 6, 15),
+                day_type="utolso_tanitasi_nap",
+                description="Utolso tanitasi nap",
+            )
+        ]
+    )
     coordinator = KretaDataUpdateCoordinator(hass, entry, client)
 
     data = await coordinator._async_update_data()
@@ -162,6 +204,12 @@ async def test_coordinator_update_data_success(hass) -> None:
     assert data.lessons_count == 1
     assert "counts" in data.payload_json
     assert "days" in data.compact_payload_json
+    assert len(data.grades) == 1
+    assert "Matematika" in data.grades_json
+    assert len(data.homework) == 1
+    assert "Peldak" in data.homework_json
+    assert len(data.school_year_calendar) == 1
+    assert "Utolso tanitasi nap" in data.school_year_json
 
 
 @pytest.mark.parametrize(
@@ -189,6 +237,9 @@ async def test_coordinator_update_data_error_mapping(hass, side_effect, expected
     client.async_get_student_profile = AsyncMock(side_effect=side_effect("boom"))
     client.async_get_lessons = AsyncMock()
     client.async_get_announced_tests = AsyncMock()
+    client.async_get_homework = AsyncMock()
+    client.async_get_grades = AsyncMock()
+    client.async_get_school_year_calendar = AsyncMock()
     coordinator = KretaDataUpdateCoordinator(hass, entry, client)
 
     with pytest.raises(expected_exception):
@@ -226,6 +277,9 @@ async def test_kreta_api_error_on_periodic_refresh_keeps_data(hass) -> None:
     client.async_get_student_profile = AsyncMock(return_value=profile)
     client.async_get_lessons = AsyncMock(return_value=[lesson])
     client.async_get_announced_tests = AsyncMock(return_value=[])
+    client.async_get_homework = AsyncMock(return_value=[])
+    client.async_get_grades = AsyncMock(return_value=[])
+    client.async_get_school_year_calendar = AsyncMock(return_value=[])
     coordinator = KretaDataUpdateCoordinator(hass, entry, client)
 
     previous_data = await coordinator._async_update_data()
@@ -256,6 +310,9 @@ async def test_coordinator_records_error_info_on_failure(hass) -> None:
     client.async_get_student_profile = AsyncMock(side_effect=CannotConnectError("timeout"))
     client.async_get_lessons = AsyncMock()
     client.async_get_announced_tests = AsyncMock()
+    client.async_get_homework = AsyncMock()
+    client.async_get_grades = AsyncMock()
+    client.async_get_school_year_calendar = AsyncMock()
     coordinator = KretaDataUpdateCoordinator(hass, entry, client)
 
     with pytest.raises(UpdateFailed):
@@ -290,6 +347,9 @@ async def test_coordinator_clears_error_info_on_success(hass) -> None:
     client.async_get_student_profile = AsyncMock(side_effect=CannotConnectError("timeout"))
     client.async_get_lessons = AsyncMock()
     client.async_get_announced_tests = AsyncMock()
+    client.async_get_homework = AsyncMock()
+    client.async_get_grades = AsyncMock()
+    client.async_get_school_year_calendar = AsyncMock()
     coordinator = KretaDataUpdateCoordinator(hass, entry, client)
 
     with pytest.raises(UpdateFailed):
@@ -300,6 +360,9 @@ async def test_coordinator_clears_error_info_on_success(hass) -> None:
     client.async_get_student_profile = AsyncMock(return_value=profile)
     client.async_get_lessons = AsyncMock(return_value=[lesson])
     client.async_get_announced_tests = AsyncMock(return_value=[])
+    client.async_get_homework = AsyncMock(return_value=[])
+    client.async_get_grades = AsyncMock(return_value=[])
+    client.async_get_school_year_calendar = AsyncMock(return_value=[])
 
     await coordinator._async_update_data()
 

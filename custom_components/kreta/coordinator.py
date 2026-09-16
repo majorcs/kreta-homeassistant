@@ -16,7 +16,14 @@ from homeassistant.util import dt as dt_util
 
 from .api.client import KretaApiClient
 from .api.exceptions import CannotConnectError, InvalidAuthError, KretaApiError
-from .api.models import AnnouncedTest, MergedCalendarEvent, StudentProfile
+from .api.models import (
+    AnnouncedTest,
+    Grade,
+    HomeworkItem,
+    MergedCalendarEvent,
+    SchoolYearMilestone,
+    StudentProfile,
+)
 from .const import (
     CONF_LOOKAHEAD_WEEKS,
     CONF_REFRESH_HOURS,
@@ -41,6 +48,12 @@ class KretaCoordinatorData:
     range_end: datetime
     payload_json: str
     compact_payload_json: str
+    grades: list[Grade]
+    grades_json: str
+    homework: list[HomeworkItem]
+    homework_json: str
+    school_year_calendar: list[SchoolYearMilestone]
+    school_year_json: str
     last_success: datetime
 
 
@@ -217,10 +230,15 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             lookahead_weeks,
         )
 
+        grades_start = week_start - timedelta(weeks=lookahead_weeks)
+
         try:
             profile = await self.client.async_get_student_profile()
             lessons = await self.client.async_get_lessons(week_start, week_end)
             tests = await self.client.async_get_announced_tests(week_start, week_end)
+            homework = await self.client.async_get_homework(week_start, week_end)
+            grades = await self.client.async_get_grades(grades_start, week_end)
+            school_year_calendar = await self.client.async_get_school_year_calendar()
         except InvalidAuthError as err:
             self.last_error_message = str(err)
             self.last_error_time = dt_util.utcnow()
@@ -268,6 +286,20 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             "counts": {"lessons": len(lessons), "tests": len(tests), "events": len(merged_events)},
         }
 
+        grades_payload = {
+            "range_start": grades_start.isoformat(),
+            "range_end": week_end.isoformat(),
+            "grades": [grade.as_dict() for grade in grades],
+        }
+        homework_payload = {
+            "range_start": week_start.isoformat(),
+            "range_end": week_end.isoformat(),
+            "homework": [item.as_dict() for item in homework],
+        }
+        school_year_payload = {
+            "milestones": [milestone.as_dict() for milestone in school_year_calendar],
+        }
+
         self.last_error_message = None
         self.last_error_time = None
         return KretaCoordinatorData(
@@ -279,5 +311,11 @@ class KretaDataUpdateCoordinator(DataUpdateCoordinator[KretaCoordinatorData]):
             range_end=range_end,
             payload_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             compact_payload_json=json.dumps(compact_payload, ensure_ascii=False, separators=(",", ":")),
+            grades=grades,
+            grades_json=json.dumps(grades_payload, ensure_ascii=False, separators=(",", ":")),
+            homework=homework,
+            homework_json=json.dumps(homework_payload, ensure_ascii=False, separators=(",", ":")),
+            school_year_calendar=school_year_calendar,
+            school_year_json=json.dumps(school_year_payload, ensure_ascii=False, separators=(",", ":")),
             last_success=dt_util.utcnow(),
         )

@@ -21,6 +21,8 @@ class StudentProfile:
     email: str | None
     school_name: str | None
     birth_date: str | None
+    education_id: str | None = None
+    class_name: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable mapping."""
@@ -47,6 +49,66 @@ class AnnouncedTest:
             self.announced_date.isoformat() if self.announced_date is not None else None
         )
         return data
+
+
+@dataclass(slots=True)
+class Grade:
+    """A normalized grade/mark entry."""
+
+    grade_date: date
+    subject_name: str
+    grade_type: str | None
+    value: str | None
+    topic: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable mapping."""
+        data = asdict(self)
+        data["grade_date"] = self.grade_date.isoformat()
+        return data
+
+
+@dataclass(slots=True)
+class HomeworkItem:
+    """A normalized homework entry."""
+
+    subject_name: str
+    description: str | None
+    due_date: date
+    assigned_date: date | None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable mapping."""
+        data = asdict(self)
+        data["due_date"] = self.due_date.isoformat()
+        data["assigned_date"] = (
+            self.assigned_date.isoformat() if self.assigned_date is not None else None
+        )
+        return data
+
+
+@dataclass(slots=True)
+class SchoolYearMilestone:
+    """A single school-year calendar entry.
+
+    ``day_type`` is the stable machine-readable Naptipus.Nev code (e.g.
+    "oszi_szunet", "teli_szunet", "tavaszi_szunet", "unnepnap",
+    "munkaszuneti_nap", "elso_tanitasi_nap", "utolso_tanitasi_nap",
+    "elso_felev_vege"); ``description`` is the free-text Naptipus.Leiras
+    label for display.
+    """
+
+    event_date: date
+    day_type: str | None
+    description: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable mapping."""
+        return {
+            "event_date": self.event_date.isoformat(),
+            "day_type": self.day_type,
+            "description": self.description,
+        }
 
 
 @dataclass(slots=True)

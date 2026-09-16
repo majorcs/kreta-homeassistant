@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timedelta
 import json
 import logging
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -15,8 +15,20 @@ from homeassistant.util import dt as dt_util
 from ..const import DEFAULT_TIMEOUT_SECONDS
 from .auth import extract_authorization_code, extract_request_verification_token
 from .diagnostics import AuthDiagnosticsTrace
-from .exceptions import ApiResponseError, CannotConnectError, InvalidAuthError, KretaApiError
-from .models import AnnouncedTest, MergedCalendarEvent, StudentProfile
+from .exceptions import (
+    ApiResponseError,
+    CannotConnectError,
+    InvalidAuthError,
+    KretaApiError,
+)
+from .models import (
+    AnnouncedTest,
+    Grade,
+    HomeworkItem,
+    MergedCalendarEvent,
+    SchoolYearMilestone,
+    StudentProfile,
+)
 from .storage import TokenStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -151,6 +163,11 @@ class KretaApiClient:
         _LOGGER.info("Fetching student profile")
         payload = await self._async_get_json("Sajat/TanuloAdatlap")
         birth_date = payload.get("SzuletesiDatum")
+        # NOTE: Sajat/TanuloAdatlap does NOT include an education-ID or
+        # class-group field (confirmed against a live payload — it only has
+        # Uid, IdpUniqueId, IntezmenyAzonosito, name/birth/address/guardian
+        # fields, and institute metadata). education_id/class_name are left
+        # unset until a real source endpoint for them is identified.
         profile = StudentProfile(
             student_name=payload.get("Nev"),
             birth_name=payload.get("SzuletesiNev"),
@@ -263,6 +280,80 @@ class KretaApiClient:
         tests.sort(key=lambda item: (item.test_date, item.lesson_index or 0, item.subject_name))
         _LOGGER.info("Announced tests fetched: %d total", len(tests))
         return tests
+
+    async def async_get_grades(self, start_date: date, end_date: date) -> list[Grade]:
+        """Fetch grades recorded within the given date range."""
+        _LOGGER.info("Fetching grades %s → %s", start_date, end_date)
+        payload = await self._async_get_json(
+            "Sajat/Ertekelesek",
+            params={"datumTol": start_date.isoformat(), "datumIg": end_date.isoformat()},
+        )
+        grades: list[Grade] = []
+        for item in payload:
+            recorded = item.get("RogzitesDatuma")
+            if recorded is None:
+                _LOGGER.warning("Skipping grade item with missing RogzitesDatuma field: %s", item)
+                continue
+            grades.append(
+                Grade(
+                    grade_date=self._parse_local_date(recorded),
+                    subject_name=item.get("Tantargy", {}).get("Nev") or "Ismeretlen tantargy",
+                    grade_type=item.get("Tipus", {}).get("Leiras"),
+                    value=item.get("SzovegesErtek"),
+                    topic=item.get("Tema"),
+                )
+            )
+        grades.sort(key=lambda grade: (grade.grade_date, grade.subject_name))
+        _LOGGER.info("Grades fetched: %d entries", len(grades))
+        return grades
+
+    async def async_get_homework(self, start_date: date, end_date: date) -> list[HomeworkItem]:
+        """Fetch homework due within the given date range."""
+        _LOGGER.info("Fetching homework %s → %s", start_date, end_date)
+        payload = await self._async_get_json(
+            "Sajat/HaziFeladatok",
+            params={"datumTol": start_date.isoformat(), "datumIg": end_date.isoformat()},
+        )
+        homework: list[HomeworkItem] = []
+        for item in payload:
+            deadline = item.get("HataridoDatuma")
+            if deadline is None:
+                _LOGGER.warning("Skipping homework item with missing HataridoDatuma field: %s", item)
+                continue
+            assigned = item.get("RogzitesIdopontja")
+            homework.append(
+                HomeworkItem(
+                    subject_name=item.get("TantargyNeve") or "Ismeretlen tantargy",
+                    description=item.get("Szoveg"),
+                    due_date=self._parse_local_date(deadline),
+                    assigned_date=self._parse_local_date(assigned) if assigned else None,
+                )
+            )
+        homework.sort(key=lambda item: (item.due_date, item.subject_name))
+        _LOGGER.info("Homework fetched: %d entries", len(homework))
+        return homework
+
+    async def async_get_school_year_calendar(self) -> list[SchoolYearMilestone]:
+        """Fetch the whole school-year calendar (no date range; one call per year)."""
+        _LOGGER.info("Fetching school-year calendar")
+        payload = await self._async_get_json("Sajat/Intezmenyek/TanevRendjeElemek")
+        milestones: list[SchoolYearMilestone] = []
+        for item in payload:
+            event_date = item.get("Datum")
+            if event_date is None:
+                _LOGGER.warning("Skipping school-year calendar item with missing Datum field: %s", item)
+                continue
+            naptipus = item.get("Naptipus", {})
+            milestones.append(
+                SchoolYearMilestone(
+                    event_date=self._parse_local_date(event_date),
+                    day_type=naptipus.get("Nev"),
+                    description=naptipus.get("Leiras"),
+                )
+            )
+        milestones.sort(key=lambda milestone: milestone.event_date)
+        _LOGGER.info("School-year calendar fetched: %d entries", len(milestones))
+        return milestones
 
     async def _async_get_json(
         self, path: str, params: dict[str, Any] | None = None

@@ -35,5 +35,8 @@ ATTR_RANGE_END = "range_end"
 ATTR_LAST_SUCCESS = "last_success"
 ATTR_LAST_ERROR = "last_error"
 ATTR_LAST_ERROR_TIME = "last_error_time"
+ATTR_GRADES_JSON = "grades_json"
+ATTR_HOMEWORK_JSON = "homework_json"
+ATTR_SCHOOL_YEAR_JSON = "school_year_json"
 
 DEFAULT_TIMEOUT_SECONDS = 30
