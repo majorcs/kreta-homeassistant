@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## 2026.09.16.1
 
+### Added
+
+- **MIT LICENSE file.** Required by HACS validation; the repository previously
+  had no license file at all.
+
 ### Changed
 
 - **Deduplicated the `device_info` block across all entity platforms.**
