@@ -14,20 +14,23 @@ All notable changes to this project will be documented in this file.
   `Upcoming Homework` count sensor.
 - **School-year calendar.** New `School Year Calendar JSON` sensor (disabled
   by default) exposing the whole school-year calendar, and an enabled
-  `Next School Year Event` sensor reporting the next upcoming entry's date
-  and description.
-- **Student profile.** The pupil profile (exposed via the existing
-  `Timetable JSON` sensor's attributes) now includes an education ID and
-  class-group field, when the e-Kréta API provides them.
+  `Next School Year Event` sensor reporting the next upcoming entry's date,
+  machine-readable day-type code (e.g. `oszi_szunet`, `teli_szunet`,
+  `unnepnap`), and free-text description — verified against a live payload.
 
-### Known limitations
+### Not included
 
-- The education ID and class-group field names, and the full set of
-  school-year calendar day-types (e.g. holiday periods), are mapped using
-  best-effort field-name guesses pending a live payload check — see
-  `scripts/inspect_raw_payloads.py`. If they turn out to be `None` for you,
-  the underlying `.get(...)` keys in `api/client.py` need correcting against
-  a real payload sample.
+- Education ID and class-group profile fields were investigated but are not
+  populated in this release: `Sajat/TanuloAdatlap` (the endpoint this
+  integration already authenticates against) doesn't contain them, confirmed
+  against a live payload. The real values live behind a structurally
+  separate, cookie-based web-portal login flow that isn't implemented here.
+
+### Fixed
+
+- Stray local debug files containing real personal data (from earlier manual
+  testing) were untracked but not excluded from git; `.gitignore` now covers
+  them.
 
 ## 2026.09.16.1
 
