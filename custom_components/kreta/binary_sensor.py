@@ -7,14 +7,13 @@ from datetime import date, timedelta
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import KretaRuntimeData
 from .api.models import MergedCalendarEvent
 from .const import DOMAIN
+from .entity import KretaEntity
 
 
 async def async_setup_entry(
@@ -53,10 +52,8 @@ async def async_setup_entry(
     )
 
 
-class KretaDayBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class KretaDayBinarySensor(KretaEntity, BinarySensorEntity):
     """Binary sensor derived from timetable and exam events."""
-
-    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -69,25 +66,12 @@ class KretaDayBinarySensor(CoordinatorEntity, BinarySensorEntity):
         event_kind: str = "lesson",
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(runtime_data.coordinator)
-        self._entry = entry
+        super().__init__(entry, runtime_data)
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
         self._day_offset = day_offset
         self._event_kind = event_kind
         self._attr_icon = "mdi:school" if event_kind == "lesson" else "mdi:clipboard-text"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return shared device info."""
-        profile = self.coordinator.data.profile if self.coordinator.data else None
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="Unofficial Kreta Integration",
-            model="Pupil account",
-            name=profile.student_name if profile and profile.student_name else self._entry.title,
-            suggested_area="Education",
-        )
 
     @property
     def is_on(self) -> bool | None:

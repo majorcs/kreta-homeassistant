@@ -9,9 +9,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import KretaRuntimeData
 from .const import (
@@ -26,6 +24,7 @@ from .const import (
     ATTR_RANGE_START,
     DOMAIN,
 )
+from .entity import KretaEntity
 
 
 async def async_setup_entry(
@@ -43,7 +42,7 @@ async def async_setup_entry(
     ])
 
 
-class KretaJsonSensor(CoordinatorEntity, SensorEntity):
+class KretaJsonSensor(KretaEntity, SensorEntity):
     """A sensor exposing Kreta data for machine processing.
 
     Disabled by default to avoid enabling it for users who don't need it.
@@ -53,30 +52,15 @@ class KretaJsonSensor(CoordinatorEntity, SensorEntity):
     limit.
     """
 
-    _attr_has_entity_name = True
     _attr_icon = "mdi:code-json"
     _attr_entity_registry_enabled_default = False
     _unrecorded_attributes = frozenset({ATTR_EVENTS_JSON, ATTR_EVENTS, ATTR_PROFILE})
 
     def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
         """Initialize the sensor."""
-        super().__init__(runtime_data.coordinator)
-        self._entry = entry
-        self._runtime_data = runtime_data
+        super().__init__(entry, runtime_data)
         self._attr_unique_id = f"{entry.entry_id}_json"
         self._attr_name = "Timetable JSON"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return shared device info."""
-        profile = self.coordinator.data.profile if self.coordinator.data else None
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="Unofficial Kreta Integration",
-            model="Pupil account",
-            name=profile.student_name if profile and profile.student_name else self._entry.title,
-            suggested_area="Education",
-        )
 
     @property
     def native_value(self) -> str | None:
@@ -106,7 +90,7 @@ class KretaJsonSensor(CoordinatorEntity, SensorEntity):
         }
 
 
-class KretaCompactJsonSensor(CoordinatorEntity, SensorEntity):
+class KretaCompactJsonSensor(KretaEntity, SensorEntity):
     """A sensor exposing a compact daily Kreta timetable for space-constrained consumers.
 
     Enabled by default because the payload (~4 KB) is small enough to avoid HA
@@ -114,29 +98,14 @@ class KretaCompactJsonSensor(CoordinatorEntity, SensorEntity):
     to keep the payload lean (e.g. for ESP32-based displays).
     """
 
-    _attr_has_entity_name = True
     _attr_icon = "mdi:code-json"
     _attr_native_unit_of_measurement = "days"
 
     def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
         """Initialize the sensor."""
-        super().__init__(runtime_data.coordinator)
-        self._entry = entry
-        self._runtime_data = runtime_data
+        super().__init__(entry, runtime_data)
         self._attr_unique_id = f"{entry.entry_id}_compact_json"
         self._attr_name = "Compact Timetable JSON"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return shared device info."""
-        profile = self.coordinator.data.profile if self.coordinator.data else None
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="Unofficial Kreta Integration",
-            model="Pupil account",
-            name=profile.student_name if profile and profile.student_name else self._entry.title,
-            suggested_area="Education",
-        )
 
     @property
     def native_value(self) -> int | None:
@@ -155,32 +124,18 @@ class KretaCompactJsonSensor(CoordinatorEntity, SensorEntity):
         }
 
 
-class KretaLastRefreshSensor(CoordinatorEntity, SensorEntity):
+class KretaLastRefreshSensor(KretaEntity, SensorEntity):
     """A sensor reporting the last successful refresh timestamp."""
 
-    _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:clock-check"
 
     def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
         """Initialize the sensor."""
-        super().__init__(runtime_data.coordinator)
-        self._entry = entry
+        super().__init__(entry, runtime_data)
         self._attr_unique_id = f"{entry.entry_id}_last_refresh"
         self._attr_name = "Last Refresh"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return shared device info."""
-        profile = self.coordinator.data.profile if self.coordinator.data else None
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="Unofficial Kreta Integration",
-            model="Pupil account",
-            name=profile.student_name if profile and profile.student_name else self._entry.title,
-            suggested_area="Education",
-        )
 
     @property
     def native_value(self) -> datetime | None:
@@ -190,10 +145,9 @@ class KretaLastRefreshSensor(CoordinatorEntity, SensorEntity):
         return self.coordinator.data.last_success
 
 
-class KretaUpdateStatusSensor(CoordinatorEntity, SensorEntity):
+class KretaUpdateStatusSensor(KretaEntity, SensorEntity):
     """A sensor reporting the status of the last data update."""
 
-    _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["ok", "error"]
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -201,22 +155,9 @@ class KretaUpdateStatusSensor(CoordinatorEntity, SensorEntity):
 
     def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
         """Initialize the sensor."""
-        super().__init__(runtime_data.coordinator)
-        self._entry = entry
+        super().__init__(entry, runtime_data)
         self._attr_unique_id = f"{entry.entry_id}_update_status"
         self._attr_name = "Update Status"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return shared device info."""
-        profile = self.coordinator.data.profile if self.coordinator.data else None
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="Unofficial Kreta Integration",
-            model="Pupil account",
-            name=profile.student_name if profile and profile.student_name else self._entry.title,
-            suggested_area="Education",
-        )
 
     @property
     def native_value(self) -> str:

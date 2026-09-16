@@ -10,12 +10,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import KretaRuntimeData
 from .api.models import MergedCalendarEvent
 from .const import DOMAIN
+from .entity import KretaEntity
 
 
 async def async_setup_entry(
@@ -28,31 +28,21 @@ async def async_setup_entry(
     async_add_entities([KretaCalendarEntity(entry, runtime_data)])
 
 
-class KretaCalendarEntity(CoordinatorEntity, CalendarEntity):
+class KretaCalendarEntity(KretaEntity, CalendarEntity):
     """Representation of Kreta events as a calendar."""
-
-    _attr_has_entity_name = True
 
     def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
         """Initialize the calendar entity."""
-        super().__init__(runtime_data.coordinator)
-        self._entry = entry
-        self._runtime_data = runtime_data
+        super().__init__(entry, runtime_data)
         self._attr_unique_id = f"{entry.entry_id}_calendar"
         self._attr_name = "Timetable"
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info for the pupil/account."""
-        profile = self.coordinator.data.profile if self.coordinator.data else None
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="Unofficial Kreta Integration",
-            model="Pupil account",
-            name=profile.student_name if profile and profile.student_name else self._entry.title,
-            suggested_area="Education",
-            configuration_url="https://github.com/major/kreta-homeassistant",
-        )
+        """Return device info for the pupil/account, with a configuration URL."""
+        info = super().device_info
+        info["configuration_url"] = "https://github.com/major/kreta-homeassistant"
+        return info
 
     @property
     def event(self) -> CalendarEvent | None:
