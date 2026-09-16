@@ -1,6 +1,6 @@
 [project]
 name = "kreta-homeassistant"
-version = "2026.09.16.2"
+version = "2026.09.16.3"
 description = "Unofficial Home Assistant custom integration for Kreta"
 requires-python = ">=3.12"
 

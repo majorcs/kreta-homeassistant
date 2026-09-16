@@ -166,8 +166,8 @@ class KretaApiClient:
         # NOTE: Sajat/TanuloAdatlap does NOT include an education-ID or
         # class-group field (confirmed against a live payload — it only has
         # Uid, IdpUniqueId, IntezmenyAzonosito, name/birth/address/guardian
-        # fields, and institute metadata). education_id/class_name are left
-        # unset until a real source endpoint for them is identified.
+        # fields, and institute metadata). These are fetched separately below
+        # from Sajat/TanuloAdatlap/TovabbiAdatok.
         profile = StudentProfile(
             student_name=payload.get("Nev"),
             birth_name=payload.get("SzuletesiNev"),
@@ -178,8 +178,38 @@ class KretaApiClient:
             school_name=payload.get("Intezmeny", {}).get("TeljesNev"),
             birth_date=birth_date.split("T", 1)[0] if birth_date else None,
         )
+
+        try:
+            extra_payload = await self._async_get_json("Sajat/TanuloAdatlap/TovabbiAdatok")
+        except KretaApiError as err:
+            _LOGGER.warning("Could not fetch student extra data (education ID/class): %s", err)
+        else:
+            profile.education_id = extra_payload.get("OktatasiAzonosito")
+            enrollment = self._pick_current_enrollment(extra_payload.get("Jogviszonyok") or [])
+            if enrollment is not None:
+                profile.class_name = enrollment.get("OsztalyNev")
+                profile.class_master_name = enrollment.get("OsztalyfonokNev")
+
         _LOGGER.info("Student profile fetched: %s", profile.student_name)
         return profile
+
+    @classmethod
+    def _pick_current_enrollment(cls, enrollments: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """Return the enrollment with the latest start date, if any."""
+        dated_enrollments = []
+        for enrollment in enrollments:
+            start_date = enrollment.get("Kezdete")
+            if not start_date:
+                continue
+            try:
+                parsed = cls._parse_local_date(start_date)
+            except ValueError:
+                continue
+            dated_enrollments.append((parsed, enrollment))
+
+        if dated_enrollments:
+            return max(dated_enrollments, key=lambda item: item[0])[1]
+        return enrollments[0] if enrollments else None
 
     async def async_get_lessons(
         self, start_date: date, end_date: date

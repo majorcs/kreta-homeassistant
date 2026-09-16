@@ -22,7 +22,7 @@ Az integráció célja, hogy a napi iskolai információk egyszerűbben jelenjen
 - érdemjegyek: `Grades JSON` szenzor (alapértelmezésben kikapcsolva) a teljes lekérdezett adatokkal, valamint egy bekapcsolt `New Grades` darabszám-szenzor
 - házi feladatok: `Homework JSON` szenzor (alapértelmezésben kikapcsolva) a teljes lekérdezett adatokkal, valamint egy bekapcsolt `Upcoming Homework` darabszám-szenzor
 - tanév rendje: `School Year Calendar JSON` szenzor (alapértelmezésben kikapcsolva) a teljes naptári adatokkal, valamint egy bekapcsolt `Next School Year Event` szenzor a következő tanévi eseménnyel
-- a tanuló profiljában (a `Timetable JSON` szenzor attribútumaiban) megjelenik az oktatási azonosító és az osztály neve is, ha az e-Kréta visszaadja ezeket
+- a tanuló profiljában (a `Timetable JSON` szenzor attribútumaiban) megjelenik az oktatási azonosító, az osztály neve és az osztályfőnök neve is, ha az e-Kréta visszaadja ezeket
 
 ## Telepítés
 

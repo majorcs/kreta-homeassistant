@@ -2,12 +2,14 @@
 kreta-homeassistant-prompt.md
 docs/architecture.md
 docs/current-state.md
+docs/kreta-api-reference.md
 
 # Sensitive or throwaway reference artifacts
 reference/
 scripts/manual_test_march_23.py
 scripts/inspect_raw_payloads.py
 scripts/*.output
+scripts/authinfo.txt
 *.log
 auth-issue.log
 relogin.log

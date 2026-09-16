@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.09.16.3
+
+### Added
+
+- **Education ID and class name.** The pupil profile now populates
+  `education_id`, `class_name`, and a new `class_master_name` field from
+  `Sajat/TanuloAdatlap/TovabbiAdatok`, a sibling endpoint on the same API tree
+  this integration already authenticates against. If the student has more
+  than one enrollment on record, the one with the most recent start date is
+  used. If this endpoint is ever unavailable, the profile fetch still
+  succeeds — these three fields just stay `None`, exactly as before.
+
 ## 2026.09.16.2
 
 ### Added
