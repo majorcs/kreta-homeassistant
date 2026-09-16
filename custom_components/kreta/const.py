@@ -24,7 +24,6 @@ PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.CALENDAR, Platform.SENSOR
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}_tokens"
 
-ATTR_PROFILE = "profile"
 ATTR_EVENTS = "events"
 ATTR_EVENTS_JSON = "events_json"
 ATTR_COMPACT_EVENTS_JSON = "compact_events_json"

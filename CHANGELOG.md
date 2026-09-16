@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.09.16.4
+
+### Added
+
+- **`Profile` sensor.** New sensor, enabled by default, reporting the
+  student's name as its state and the rest of the profile (education ID,
+  class name, class master name, school name, etc.) as attributes. Sensitive
+  identity fields (mother's name, birth date/place, phone, email) are
+  excluded from the recorder/history database while remaining available at
+  runtime for automations and templates.
+
+### Changed
+
+- The pupil profile is no longer duplicated inside the (disabled-by-default)
+  `Timetable JSON` sensor's attributes — it now lives solely on the new
+  `Profile` sensor.
+
 ## 2026.09.16.3
 
 ### Added

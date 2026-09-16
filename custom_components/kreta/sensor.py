@@ -22,7 +22,6 @@ from .const import (
     ATTR_LAST_ERROR,
     ATTR_LAST_ERROR_TIME,
     ATTR_LAST_SUCCESS,
-    ATTR_PROFILE,
     ATTR_RANGE_END,
     ATTR_RANGE_START,
     ATTR_SCHOOL_YEAR_JSON,
@@ -49,6 +48,7 @@ async def async_setup_entry(
         KretaUpcomingHomeworkSensor(entry, runtime_data),
         KretaSchoolYearJsonSensor(entry, runtime_data),
         KretaNextSchoolEventSensor(entry, runtime_data),
+        KretaProfileSensor(entry, runtime_data),
     ])
 
 
@@ -56,15 +56,18 @@ class KretaJsonSensor(KretaEntity, SensorEntity):
     """A sensor exposing Kreta data for machine processing.
 
     Disabled by default to avoid enabling it for users who don't need it.
-    Large attributes (profile, events list, full JSON payload) are excluded
-    from the recorder via _unrecorded_attributes so they are available at
-    runtime for automations and templates without hitting the 16 KB storage
-    limit.
+    Large attributes (events list, full JSON payload) are excluded from the
+    recorder via _unrecorded_attributes so they are available at runtime for
+    automations and templates without hitting the 16 KB storage limit.
+
+    Student profile fields live on the separate KretaProfileSensor instead,
+    since that data doesn't belong with the (disabled-by-default) timetable
+    payload.
     """
 
     _attr_icon = "mdi:code-json"
     _attr_entity_registry_enabled_default = False
-    _unrecorded_attributes = frozenset({ATTR_EVENTS_JSON, ATTR_EVENTS, ATTR_PROFILE})
+    _unrecorded_attributes = frozenset({ATTR_EVENTS_JSON, ATTR_EVENTS})
 
     def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
         """Initialize the sensor."""
@@ -89,7 +92,6 @@ class KretaJsonSensor(KretaEntity, SensorEntity):
         if self.coordinator.data is None:
             return {}
         return {
-            ATTR_PROFILE: self.coordinator.data.profile.as_dict(),
             ATTR_EVENTS: [event.as_dict() for event in self.coordinator.data.events],
             ATTR_EVENTS_JSON: self.coordinator.data.payload_json,
             ATTR_RANGE_START: self.coordinator.data.range_start.isoformat(),
@@ -361,3 +363,40 @@ class KretaNextSchoolEventSensor(KretaEntity, SensorEntity):
         if milestone is None:
             return {}
         return {"day_type": milestone.day_type, "description": milestone.description}
+
+
+class KretaProfileSensor(KretaEntity, SensorEntity):
+    """A sensor reporting the student's name, with the rest of the profile as attributes.
+
+    Enabled by default — unlike the Timetable JSON sensor, this payload is
+    small. Sensitive identity fields (mother's name, birth date/place, phone,
+    email) are excluded from the recorder via _unrecorded_attributes so they
+    stay usable at runtime without being permanently logged to history.
+    """
+
+    _attr_icon = "mdi:account-child"
+    _unrecorded_attributes = frozenset(
+        {"mother_name", "birth_date", "birth_place", "phone_number", "email"}
+    )
+
+    def __init__(self, entry: ConfigEntry, runtime_data: KretaRuntimeData) -> None:
+        """Initialize the sensor."""
+        super().__init__(entry, runtime_data)
+        self._attr_unique_id = f"{entry.entry_id}_profile"
+        self._attr_name = "Profile"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the student's name."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.profile.student_name
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the rest of the profile fields."""
+        if self.coordinator.data is None:
+            return {}
+        attrs = self.coordinator.data.profile.as_dict()
+        attrs.pop("student_name", None)
+        return attrs
