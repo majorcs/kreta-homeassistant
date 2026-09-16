@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026.09.16.1
+
+### Changed
+
+- **Deduplicated the `device_info` block across all entity platforms.**
+  A new `KretaEntity` base class (`custom_components/kreta/entity.py`) now
+  provides the shared `device_info` property and `__init__` logic previously
+  copy-pasted across `sensor.py` (4 classes), `binary_sensor.py`,
+  `calendar.py`, and `button.py`. `KretaCalendarEntity` overrides
+  `device_info` to add its `configuration_url`, the one place that
+  legitimately differs from the shared block.
+- Removed the unused `self._runtime_data` attribute from `KretaJsonSensor`,
+  `KretaCompactJsonSensor`, and `KretaCalendarEntity` — it was stored but
+  never read.
+
 ## 2026.06.19.1
 
 ### Added
